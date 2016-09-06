@@ -5,13 +5,13 @@ import sys
 from Crypto.Cipher import AES
 from Crypto import Random
 import hashlib
-import base64
 import binascii
-password = "HeyItsMeYourBrother".encode()
+
 
 
 class Client:
     def __init__(self):
+        self.passwords = {}
         self.sock = socket.socket()
         self.client_name = ''
         self.server_port = 5000
@@ -52,10 +52,18 @@ class Client:
                             split_user_input = user_input.split(' ')
                             to = split_user_input[1]
                             text = " ".join(split_user_input[2:])
-                            cipher_text, iv = encrypt_message(text)
-                            message = {'type': 'message', 'to': to, 'iv': iv, 'message': cipher_text}
+                            if self.passwords.get(to) is not None:
+                                cipher_text, iv = encrypt_message(text, self.passwords[to])
+                                message = {'type': 'secure-message', 'to': to, 'iv': iv, 'message': cipher_text}
+                            else:
+                                message = {'type': 'message', 'to': to, 'message': text}
                             json_message = json.dumps(message)
                             self.sock.send(json_message.encode('utf-8'))
+                        elif user_input.lower().startswith('/password'):  # /password John P4$$w0rd
+                            split_user_input = user_input.strip().split(' ')
+                            # add a new password
+                            self.passwords[split_user_input[1]] = split_user_input[2].encode()
+                            print("Password added! Try sending this person a message!")
                         elif user_input.lower() == '/exit\n':
                             self.stop()
                             sys.exit(0)
@@ -65,8 +73,19 @@ class Client:
                     json_data = json.loads(received)
                     if json_data['type'] == 'message':
                         print("From {}: {}".format(json_data['from'],
-                                                   decrypt_message(json_data['message'],
-                                                                   json_data['iv'])))
+                                                   json_data['message']))
+                    elif json_data['type'] == 'secure-message':
+                        if self.passwords.get(json_data['from']) is None:
+                            print("You received a message from {} but you don't have a password set for encryption "
+                                  "with them.\nThe key must be synchronous and shared between the two of you.\n"
+                                  "You can enter one now by using the /password <NAME> <Password> command."
+                                  .format(json_data['from']))
+                        else:
+                            print("Secure Message From {}: \n{}".format(json_data['from'],
+                                                                       decrypt_message(json_data['message'],
+                                                                       self.passwords[json_data['from']],
+                                                                       json_data['iv'])))
+
                     elif json_data['type'] == 'error':
                         print("ERROR: " + json_data['message'])
 
@@ -76,7 +95,7 @@ class Client:
         sys.exit(0)
 
 
-def encrypt_message(text):
+def encrypt_message(text, password):
     key = hashlib.sha256(password).digest()
     iv = Random.new().read(AES.block_size)
     enc = AES.new(key, AES.MODE_CBC, iv)
@@ -89,7 +108,7 @@ def encrypt_message(text):
     return binascii.hexlify(cipher_text).decode('utf-8'), binascii.hexlify(iv).decode('utf-8')
 
 
-def decrypt_message(cipher_text, iv):
+def decrypt_message(cipher_text, password, iv):
     cipher_text = binascii.unhexlify(cipher_text.encode('utf-8'))
     iv = binascii.unhexlify(iv.encode('utf-8'))
     key = hashlib.sha256(password).digest()
