@@ -68,21 +68,24 @@ class Server:
         while self.running:
             conn, addr = self.sock.accept()
             conn.settimeout(5)
-            try:
-                name = conn.recv(1024).decode('utf-8')
-                if self.connection_threads.get(name) is None:
-                    response = {'type': 'success', 'message': 'Name Granted! You are known as {}.'.format(name)}
-                    conn.send(json.dumps(response).encode('utf-8'))
-                    print("Connection from: {0}@{1}".format(name, addr))
-                    thread = ConnectionThread(name, conn, addr)
-                    self.connection_threads[name] = thread
-                    thread.start()
-                else:
-                    response = {'type': 'error', 'message': 'Name Already Taken!'}
-                    conn.send(json.dumps(response).encode('utf-8'))
-            except socket.timeout:
-                conn.close()
-                print("No name request from {0}, connection closed.".format(addr))
+            name_assigned = False
+            while not name_assigned:
+                try:
+                    name = conn.recv(1024).decode('utf-8')
+                    if self.connection_threads.get(name) is None:
+                        response = {'type': 'success', 'message': 'Name Granted! You are known as {}.'.format(name)}
+                        name_assigned = True
+                        conn.send(json.dumps(response).encode('utf-8'))
+                        print("Connection from: {0}@{1}".format(name, addr))
+                        thread = ConnectionThread(name, conn, addr)
+                        self.connection_threads[name] = thread
+                        thread.start()
+                    else:
+                        response = {'type': 'error', 'message': 'Name Already Taken!'}
+                        conn.send(json.dumps(response).encode('utf-8'))
+                except socket.timeout:
+                    conn.close()
+                    print("No name request from {0}, connection closed.".format(addr))
 
 
 if __name__ == "__main__":
