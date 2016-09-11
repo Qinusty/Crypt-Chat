@@ -14,7 +14,7 @@ class Client:
         self.passwords = {}
         self.sock = socket.socket()
         self.client_name = ''
-        self.server_port = 5000
+        self.server_port = 5001
         self.server_address = ''
         self.running = False
 
@@ -42,9 +42,9 @@ class Client:
     def run(self):
         inputs = [self.sock, sys.stdin]
         while self.running:
-            inputready, _, _ = select.select(inputs, [], [])
+            inputs_ready, _, _ = select.select(inputs, [], [])
 
-            for s in inputready:
+            for s in inputs_ready:
                 if s == sys.stdin:
                     user_input = sys.stdin.readline()
                     if user_input.startswith('/'):
@@ -77,14 +77,14 @@ class Client:
                     elif json_data['type'] == 'secure-message':
                         if self.passwords.get(json_data['from']) is None:
                             print("You received a message from {} but you don't have a password set for encryption "
-                                  "with them.\nThe key must be synchronous and shared between the two of you.\n"
+                                  "with them.\nThe key must be symmetric and shared between the two of you.\n"
                                   "You can enter one now by using the /password <NAME> <Password> command."
                                   .format(json_data['from']))
                         else:
                             print("Secure Message From {}: \n{}".format(json_data['from'],
-                                                                       decrypt_message(json_data['message'],
-                                                                       self.passwords[json_data['from']],
-                                                                       json_data['iv'])))
+                                                                        decrypt_message(json_data['message'],
+                                                                        self.passwords[json_data['from']],
+                                                                        json_data['iv'])))
 
                     elif json_data['type'] == 'error':
                         print("ERROR: " + json_data['message'])
