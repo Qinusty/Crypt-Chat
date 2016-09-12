@@ -94,7 +94,7 @@ class Server:
                             if json_data['type'] in [message.SECUREMESSAGE_TYPE, message.MESSAGE_TYPE]:
                                 existing_user = False
                                 outgoing_conn = None
-                                for user, user_conn in self.users.items():  # check if user exists #FIX how to iterate dict
+                                for user, user_conn in self.users.items():
                                     if user.name == json_data['to']:
                                         existing_user = True
                                         outgoing_conn = user_conn

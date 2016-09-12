@@ -13,7 +13,6 @@ import src.message as message
 
 class Client:
     def __init__(self):
-        #TODO: CHECK FOR CONFIG, TAKE IP and PORT
         self.passwords = {}
         self.sock = socket.socket()
         self.client_name = ''
@@ -21,14 +20,33 @@ class Client:
         self.server_address = ''
         self.running = False
 
+    def load_config(self):
+        try:
+            json_data = json.load(open("../config.json"))
+            self.server_address = json_data["server-address"]
+            self.server_port = json_data["port"]
+            return True
+        except FileNotFoundError:
+            return False
+        except ValueError:
+            return False
+
     def start(self):
         self.running = True
         connected = False
+        if self.load_config():
+            try:
+                self.sock.connect((self.server_address, self.server_port))
+                connected = True
+                print("Connected to {}:{} via config".format(self.server_address,self.server_port))
+            except:
+                print("Config not valid!")
         while not connected:
             try:
                 self.server_address = input("Enter Server IP: ")
                 self.sock.connect((self.server_address, self.server_port))
                 connected = True
+                print("Successfully Connected to {}!".format(self.server_address))
             except:
                 print("Invalid IP or server did not respond.")
         self.run()
