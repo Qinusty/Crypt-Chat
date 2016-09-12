@@ -7,10 +7,13 @@ MESSAGE_TYPE = 'message'
 SECUREMESSAGE_TYPE = 'secure-message'
 REQUEST_TYPE = 'request'
 
+AUTH_REQUEST = 'auth'
+REGISTER_REQUEST = 'register'
+
 
 class Base:
     def __init__(self):
-        self.data = dict
+        self.data = {}
 
     def to_json(self):
         return json.dumps(self.data)
@@ -48,15 +51,15 @@ class Response(Base):
         self.data['message'] = message
 
 
-def parse(json):
+def parse(json_data):
     # return a message object
-    if json['type'] == MESSAGE_TYPE:
-        msg = Message(json['to'], json['message'], json.get('from'))
-    elif json['type'] == SECUREMESSAGE_TYPE:
-        msg = SecureMessage(json['to'], json['message'], json['iv'], json.get('from'))
-    elif json['type'] == REQUEST_TYPE:
-        msg = Request(json['request'], json['args'])
+    if json_data['type'] == MESSAGE_TYPE:
+        msg = Message(json_data['to'], json_data['message'], json_data.get('from'))
+    elif json_data['type'] == SECUREMESSAGE_TYPE:
+        msg = SecureMessage(json_data['to'], json_data['message'], json_data['iv'], json_data.get('from'))
+    elif json_data['type'] == REQUEST_TYPE:
+        msg = Request(json_data['request'], json_data['args'])
     else:
-        msg = Response(json['type'], json['message'])
+        msg = Response(json_data['type'], json_data['message'])
 
     return msg

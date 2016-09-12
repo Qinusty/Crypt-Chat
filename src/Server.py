@@ -6,58 +6,19 @@ import queue
 import src.message as message
 
 class User:
-    def __init__(self, name):
+    def __init__(self, name, passhash):
         self.name = name
-
-
-# class ConnectionThread(threading.Thread):
-#     def __init__(self, name, conn, addr):
-#         super().__init__()
-#         self.connection = conn
-#         self.connection.settimeout(None)
-#         self.client_address = addr
-#         self.client_name = name
-#         self.__running = False
-#
-#     def run(self):
-#         disconnected = False
-#         while self.__running and not disconnected:
-#             try:
-#                 received = ''
-#                 while len(received) == 0:
-#                     received = self.connection.recv(1024).decode('utf-8')
-#                 json_data = json.loads(received)
-#                 print("data received from {0} at {1} going to {2}".format(self.client_name, self.client_address, json_data['to']))
-#                 print("It says: ", json_data['message'])
-#                 if s.connection_threads.get(json_data['to']) is None:
-#                     response = {'type': 'error', 'message': 'No user connected with this name!'}
-#                     self.connection.send(json.dumps(response).encode('utf-8'))
-#                 else:
-#                     response = json_data
-#                     response['from'] = self.client_name
-#                     s.connection_threads[response['to']].connection.send(json.dumps(response).encode('utf-8'))
-#             except BrokenPipeError:
-#                 print("Client at {0} has disconnected".format(self.client_address))
-#                 disconnected = True
-#                 super().stop()
-#
-#     def start(self):
-#         self.__running = True
-#         return super().start()
-#
-#     def stop(self):
-#         self.__running = False
-
+        self.passhash = passhash
 
 class Server:
     def __init__(self):
         super().__init__()
         self.running = False
         self.HOST = '127.0.0.1'
-        self.PORT = 5001
+        self.PORT = 5000
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
-        self.users = {} # User : Connection
+        self.users = {}  # User : Connection
 
     def start(self):
         self.running = True
@@ -89,37 +50,68 @@ class Server:
                         # Handle server admin commands perhaps
                         print("! ADMIN INPUT NEEDS IMPLEMENTATION !")
                     else:
-                        ## MOVE TO HERE POSSIBLY
-
+                        received = ""
+                        while len(received) == 0:
+                            received = connection.recv(1024).decode('utf-8')
+                        json_data = json.loads(received)
                         # Handle unique connections via lookup with self.users
-                        if connection not in self.users:
-                            # hasn't logged in # need to handle /register #TODO handle /register
-                            resp = message.Response("auth-error", "Please connect via a valid username/password"
-                                                               "or register using /register <username> <password>").to_json()
-                            message_queue[connection].append(resp)
-                        else: # valid user account
-                            received = self.connection.recv(1024).decode('utf-8') #TODO possible move this to above line 92
-                            json_data = json.loads(received)
-                            # handle special cases
-                            print("data received from {0} at {1} going to {2}".format(self.client_name, self.client_address, json_data['to']))
-                            print("It says: ", json_data['message'])
-                            if self.users.get(json_data['to']) is None:
-                                response = message.Response(message.ERROR, "User not connected!").to_json()
-                                message_queue[connection].put(response)
+                        if connection not in self.users.values():
+                            if json_data['type'] == message.REQUEST_TYPE:
+                                args = json_data['args']
+                                if json_data['request'] == message.AUTH_REQUEST:
+                                    # TODO: Implement database or filestore for users
+                                    print("NOT IMPLEMENTED")
+                                    message_queue[connection].put(message.Response(message.ERROR,
+                                                                                   "Authentication not implemented, "
+                                                                                   "register a new username"))
+                                    if connection not in outputs:
+                                        outputs.append(connection)
+                                elif json_data['request'] == message.REGISTER_REQUEST:
+                                    if args[0] not in self.users.keys(): # name not taken
+                                        newuser = User(args[0], args[1])
+                                        self.users[newuser] = connection # add user to self.users with connection
+                                        message_queue[connection].put(message.Response('auth-success',
+                                                                                       "Authentication successful as: {}"
+                                                                                       .format(args[0])).to_json())
+                                        print("New user registered as {}!".format(newuser.name))
+                                        if connection not in outputs:
+                                            outputs.append(connection)
+                                    else: # name taken
+                                        message_queue[connection].put(message.Response(message.ERROR,
+                                                                                       "Name Taken! Try another"))
+                                        if connection not in outputs:
+                                            outputs.append(connection)
+
+                            else:
+                                # hasn't logged in # need to handle /register
+                                resp = message.Response("auth-error", "Please connect via a valid username/password "
+                                                                      "or register using /register <username> "
+                                                                      "<password>").to_json()
+                                message_queue[connection].put(resp)
                                 if connection not in outputs:
                                     outputs.append(connection)
-                            else:
-                                response = json_data
-                                response['from'] = self.client_name
-                                outgoing_conn = self.users[response['to']]
-                                message_queue[outgoing_conn].put(json.dumps(response))
-                                if outgoing_conn not in outputs:
-                                    outputs.append(outgoing_conn)
-
+                        else:  # valid user account
+                            if json_data['type'] in [message.SECUREMESSAGE_TYPE, message.MESSAGE_TYPE]:
+                                existing_user = False
+                                outgoing_conn = None
+                                for user, user_conn in self.users.items():  # check if user exists #FIX how to iterate dict
+                                    if user.name == json_data['to']:
+                                        existing_user = True
+                                        outgoing_conn = user_conn
+                                        break
+                                if not existing_user:  # if user isn't connected
+                                    response = message.Response(message.ERROR, "User not connected!").to_json()
+                                    message_queue[connection].put(response)
+                                    if connection not in outputs:
+                                        outputs.append(connection)
+                                else:
+                                    message_queue[outgoing_conn].put(json.dumps(json_data))
+                                    if outgoing_conn not in outputs:
+                                        outputs.append(outgoing_conn)
 
                 for connection in outputs_ready:
                     try:
-                        next_msg = message_queue[s].get_nowait()
+                        next_msg = message_queue[connection].get_nowait()
                     except queue.Empty:
                         outputs.remove(connection)
                     else:
@@ -127,28 +119,6 @@ class Server:
 
             except select.error:
                 print("Select threw an error!")
-
-            ### rewrite with select above ################################################
-            conn, addr = self.sock.accept()
-            conn.settimeout(5)
-            name_assigned = False
-            while not name_assigned:
-                try:
-                    name = conn.recv(1024).decode('utf-8')
-                    if self.connection_threads.get(name) is None:
-                        response = {'type': 'success', 'message': 'Name Granted! You are known as {}.'.format(name)}
-                        name_assigned = True
-                        conn.send(json.dumps(response).encode('utf-8'))
-                        print("Connection from: {0}@{1}".format(name, addr))
-                        thread = ConnectionThread(name, conn, addr)
-                        self.connection_threads[name] = thread
-                        thread.start()
-                    else:
-                        response = {'type': 'error', 'message': 'Name Already Taken!'}
-                        conn.send(json.dumps(response).encode('utf-8'))
-                except socket.timeout:
-                    conn.close()
-                    print("No name request from {0}, connection closed.".format(addr))
 
 if __name__ == "__main__":
     s = Server()
