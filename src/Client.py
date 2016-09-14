@@ -122,8 +122,11 @@ class Client:
                             print(json_data['message'])
 
     def stop(self):
+        data = {'type': 'logout'}
+        self.sock.send(json.dumps(data).encode('utf-8'))
         self.running = False
         self.sock.close()
+
         sys.exit(0)
 
 
@@ -149,5 +152,8 @@ def decrypt_message(cipher_text, password, iv):
 
 if __name__ == "__main__":
     c = Client()
-    c.start()
+    try:
+        c.start()
+    except:
+        c.stop()
 

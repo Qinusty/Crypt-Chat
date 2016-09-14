@@ -4,11 +4,9 @@ import select
 import sys
 import queue
 import src.message as message
+import src.DbManager as Db
 
-class User:
-    def __init__(self, name, passhash):
-        self.name = name
-        self.passhash = passhash
+
 
 class Server:
     def __init__(self):
@@ -18,7 +16,8 @@ class Server:
         self.PORT = 5000
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
-        self.users = {}  # User : Connection
+        self.users = {}  # String : Connection
+        self.dbmgr = Db.DatabaseManager("enchat", "postgres", "develpass")
 
     def start(self):
         self.running = True
@@ -27,6 +26,8 @@ class Server:
 
     def stop(self):
         self.running = False
+        self.dbmgr.cur.close()
+        self.dbmgr.conn.close()
 
     def listen(self):
         self.sock.listen(5)
@@ -48,6 +49,7 @@ class Server:
                         message_queue[conn] = queue.Queue()
                     elif connection is sys.stdin:
                         # Handle server admin commands perhaps
+                        # TODO: Handle admin input
                         print("! ADMIN INPUT NEEDS IMPLEMENTATION !")
                     else:
                         received = ""
@@ -59,26 +61,34 @@ class Server:
                             if json_data['type'] == message.REQUEST_TYPE:
                                 args = json_data['args']
                                 if json_data['request'] == message.AUTH_REQUEST:
-                                    # TODO: Implement database or filestore for users
-                                    print("NOT IMPLEMENTED")
-                                    message_queue[connection].put(message.Response(message.ERROR,
-                                                                                   "Authentication not implemented, "
-                                                                                   "register a new username"))
+                                    if self.dbmgr.validate_user(args[0], args[1]):
+                                        message_queue[connection].put(message.Response(message.SUCCESS,
+                                                                                       "Authentication successfull "
+                                                                                       "with name {}.".format(args[0]))
+                                                                      )
+                                        if connection not in outputs:
+                                            outputs.append(connection)
+                                    else:
+                                        message_queue[connection].put(message.Response(message.ERROR,
+                                                                                       "Authentication unsuccessful!: "
+                                                                                       "Invalid username or password"))
                                     if connection not in outputs:
                                         outputs.append(connection)
                                 elif json_data['request'] == message.REGISTER_REQUEST:
-                                    if args[0] not in self.users.keys(): # name not taken
-                                        newuser = User(args[0], args[1])
-                                        self.users[newuser] = connection # add user to self.users with connection
-                                        message_queue[connection].put(message.Response('auth-success',
-                                                                                       "Authentication successful as: {}"
-                                                                                       .format(args[0])).to_json())
-                                        print("New user registered as {}!".format(newuser.name))
-                                        if connection not in outputs:
-                                            outputs.append(connection)
-                                    else: # name taken
+                                    if not self.dbmgr.user_exists(args[0]):
+                                        ## register
+                                        if self.dbmgr.add_user(args[0], args[1]):
+                                            message_queue[connection].put(message.Response('auth-success',
+                                                                                           "Authentication successful as: {}"
+                                                                                           .format(args[0])).to_json())
+                                            print("New user registered as {}!".format(args[0]))
+                                            self.users[args[0]] = connection
+                                            if connection not in outputs:
+                                                outputs.append(connection)
+                                    else:
                                         message_queue[connection].put(message.Response(message.ERROR,
-                                                                                       "Name Taken! Try another"))
+                                                                                       "Name Taken! Try another")
+                                                                      .to_json())
                                         if connection not in outputs:
                                             outputs.append(connection)
 
@@ -90,12 +100,12 @@ class Server:
                                 message_queue[connection].put(resp)
                                 if connection not in outputs:
                                     outputs.append(connection)
-                        else:  # valid user account
+                        else:  # connected user
                             if json_data['type'] in [message.SECUREMESSAGE_TYPE, message.MESSAGE_TYPE]:
                                 existing_user = False
                                 outgoing_conn = None
-                                for user, user_conn in self.users.items():
-                                    if user.name == json_data['to']:
+                                for username, user_conn in self.users.items():
+                                    if username == json_data['to']:
                                         existing_user = True
                                         outgoing_conn = user_conn
                                         break
@@ -108,6 +118,13 @@ class Server:
                                     message_queue[outgoing_conn].put(json.dumps(json_data))
                                     if outgoing_conn not in outputs:
                                         outputs.append(outgoing_conn)
+                            elif json_data['type'] == 'logout':
+                                inputs.remove(connection)
+                                try:
+                                    outputs.remove(connection)
+                                except ValueError:
+                                    pass
+                                del self.users[[k for k, v in d.items() if v == connection][0]]
 
                 for connection in outputs_ready:
                     try:
@@ -124,5 +141,7 @@ if __name__ == "__main__":
     s = Server()
     try:
         s.start()
+    except KeyboardInterrupt:
+        print("Server closed!")
     finally:
         s.stop()
