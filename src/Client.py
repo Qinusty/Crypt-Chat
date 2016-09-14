@@ -20,6 +20,7 @@ class Client:
         self.server_address = ''
         self.running = False
 
+
     def load_config(self):
         try:
             json_data = json.load(open("../config.json"))
@@ -51,7 +52,8 @@ class Client:
                 print("Invalid IP or server did not respond.")
         self.run()
 
-    def run(self): # TODO: implement message_queue with Client and remove sock.send
+    def run(self):
+        message_queue = queue.Queue()
         inputs = [self.sock, sys.stdin]
         while self.running:
             inputs_ready, _, _ = select.select(inputs, [], [])
@@ -69,7 +71,7 @@ class Client:
                                 json_message = message.SecureMessage(to, cipher_text, iv, fr=self.client_name).to_json()
                             else:
                                 json_message = message.Message(to, text, fr=self.client_name).to_json()
-                            self.sock.send(json_message.encode('utf-8'))
+                            message_queue.put(json_message)
 
                         elif user_input.lower().startswith('/password'):  # /password John P4$$w0rd
                             split_user_input = user_input.strip().split(' ')
@@ -83,7 +85,7 @@ class Client:
                             self.client_name = usn
                             pswhash = hash_password(split_user_input[2])
                             request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).to_json()
-                            self.sock.send(request.encode('utf-8'))
+                            message_queue.put(request)
                             print("register request: ", request)
 
                         elif user_input.lower().startswith('/login'):
@@ -95,7 +97,7 @@ class Client:
                             passhash = hash_password(psw)
                             rq = message.Request(message.AUTH_REQUEST, [usn, passhash])
                             self.client_name = usn
-                            self.sock.send(rq.to_json().encode('utf-8'))
+                            message_queue.put(rq.to_json())
                         elif user_input.lower() == '/exit\n':
                             self.stop()
                             sys.exit(0)
@@ -128,11 +130,21 @@ class Client:
                         elif json_data['type'] == message.SUCCESS:
                             print(json_data['message'])
 
+            while not message_queue.empty():
+                msg = message_queue.get_nowait()
+                self.sock.send(msg.encode('utf-8'))
+
+
+
+
     def stop(self):
-        data = {'type': 'logout'}
-        self.sock.send(json.dumps(data).encode('utf-8'))
-        self.running = False
-        self.sock.close()
+        try:
+            data = {'type': 'logout'}
+            self.sock.send(json.dumps(data).encode('utf-8'))
+            self.running = False
+            self.sock.close()
+        except:
+            pass
 
         sys.exit(0)
 
@@ -165,5 +177,6 @@ def hash_password(pwd):
 
 if __name__ == "__main__":
     c = Client()
+
     c.start()
 
