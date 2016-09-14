@@ -9,9 +9,9 @@ class DatabaseManager:
         self.conn.autocommit = True
 
     def validate_user(self, usn, passhash):
-        self.cur.execute('SELECT passhash FROM users WHERE name = %s', (usn))
+        self.cur.execute('SELECT passhash FROM users WHERE name = %s', (usn,))
         data = self.cur.fetchone()
-        if data[0] == passhash:
+        if data is not None and data[0] == passhash:
             return True
         else:
             return False

@@ -81,15 +81,21 @@ class Client:
                             split_user_input = user_input.strip().split(' ')
                             usn = split_user_input[1]
                             self.client_name = usn
-                            pswhash = SHA512.new(split_user_input[2].encode('utf-8')).digest()
-                            pswhash = binascii.hexlify(pswhash).decode('utf-8')
+                            pswhash = hash_password(split_user_input[2])
                             request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).to_json()
                             self.sock.send(request.encode('utf-8'))
                             print("register request: ", request)
 
                         elif user_input.lower().startswith('/login'):
-                            print("Requires implementation!")
-
+                            split_user_input = user_input.strip().split(' ')
+                            try:
+                                usn, psw = split_user_input[1:]
+                            except ValueError:
+                                print("Invalid command! /login <username> <password>")
+                            passhash = hash_password(psw)
+                            rq = message.Request(message.AUTH_REQUEST, [usn, passhash])
+                            self.client_name = usn
+                            self.sock.send(rq.to_json().encode('utf-8'))
                         elif user_input.lower() == '/exit\n':
                             self.stop()
                             sys.exit(0)
@@ -103,6 +109,7 @@ class Client:
                                                        json_data['message']))
                         elif json_data['type'] == 'secure-message':
                             if self.passwords.get(json_data['from']) is None:
+                                print("Secure Message From {}: \n{}".format(json_data['from'], json_data['message']))
                                 print("You received a message from {} but you don't have a password set for encryption "
                                       "with them.\nThe key must be symmetric and shared between the two of you.\n"
                                       "You can enter one now by using the /password <NAME> <Password> command."
@@ -118,7 +125,7 @@ class Client:
                         elif json_data['type'] == 'auth-error':
                             print(json_data['message'])
                             self.client_name = ''
-                        elif json_data['type'] == 'auth-success':
+                        elif json_data['type'] == message.SUCCESS:
                             print(json_data['message'])
 
     def stop(self):
@@ -150,10 +157,13 @@ def decrypt_message(cipher_text, password, iv):
     return dec.decrypt(cipher_text).decode().strip()
 
 
+def hash_password(pwd):
+    pswhash = SHA512.new(pwd.encode('utf-8')).digest()
+    pswhash = binascii.hexlify(pswhash).decode('utf-8')
+    return pswhash
+
+
 if __name__ == "__main__":
     c = Client()
-    try:
-        c.start()
-    except:
-        c.stop()
+    c.start()
 
