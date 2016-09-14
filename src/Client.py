@@ -20,7 +20,6 @@ class Client:
         self.server_address = ''
         self.running = False
 
-
     def load_config(self):
         try:
             json_data = json.load(open("../config.json"))
@@ -97,6 +96,7 @@ class Client:
                             passhash = hash_password(psw)
                             rq = message.Request(message.AUTH_REQUEST, [usn, passhash])
                             self.client_name = usn
+                            print(rq.to_json())
                             message_queue.put(rq.to_json())
                         elif user_input.lower() == '/exit\n':
                             self.stop()
@@ -117,10 +117,15 @@ class Client:
                                       "You can enter one now by using the /password <NAME> <Password> command."
                                       .format(json_data['from']))
                             else:
-                                print("Secure Message From {}: \n{}".format(json_data['from'],
-                                                                            decrypt_message(json_data['message'],
-                                                                            self.passwords[json_data['from']],
-                                                                            json_data['iv'])))
+                                try:
+                                    msg = decrypt_message(json_data['message'],
+                                                          self.passwords[json_data['from']],
+                                                          json_data['iv'])
+                                except UnicodeDecodeError:
+                                    print("Non symmetric key! Error Decoding message "
+                                          "received from {}".format(json_data['from']))
+                                else:
+                                    print("Secure Message From {}: \n{}".format(json_data['from'], msg))
 
                         elif json_data['type'] == 'error':
                             print("ERROR: " + json_data['message'])
@@ -177,6 +182,8 @@ def hash_password(pwd):
 
 if __name__ == "__main__":
     c = Client()
-
-    c.start()
+    try:
+        c.start()
+    except KeyboardInterrupt:
+        c.stop()
 
