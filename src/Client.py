@@ -20,7 +20,6 @@ class Client:
         self.server_address = ''
         self.running = False
 
-
     def load_config(self):
         try:
             json_data = json.load(open("../config.json"))

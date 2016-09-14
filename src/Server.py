@@ -74,7 +74,7 @@ class Server:
         if connection not in self.users.values():
             if json_data['type'] == message.REQUEST_TYPE:
                 args = json_data['args']
-                if json_data['request'] == message.AUTH_REQUEST:
+                if json_data['request'] == message.AUTH_REQUEST: # TODO: stop login override kicking users off
                     print('Attempted login of {}'.format(args[0]), end=": ")
                     if self.dbmgr.validate_user(args[0], args[1]):
                         print("SUCCESS")
