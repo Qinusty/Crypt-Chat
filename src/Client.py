@@ -38,7 +38,7 @@ class Client:
             try:
                 self.sock.connect((self.server_address, self.server_port))
                 connected = True
-                print("Connected to {}:{} via config".format(self.server_address,self.server_port))
+                print("Connected to {}:{} via config".format(self.server_address, self.server_port))
             except:
                 print("Config not valid!")
         while not connected:
@@ -47,7 +47,7 @@ class Client:
                 self.sock.connect((self.server_address, self.server_port))
                 connected = True
                 print("Successfully Connected to {}!".format(self.server_address))
-            except:
+            except ConnectionRefusedError:
                 print("Invalid IP or server did not respond.")
         self.run()
 
@@ -58,7 +58,7 @@ class Client:
             inputs_ready, _, _ = select.select(inputs, [], [])
 
             for s in inputs_ready:
-                if s == sys.stdin:
+                if s == sys.stdin: # TODO: break down into functions
                     user_input = sys.stdin.readline()
                     if user_input.startswith('/'):
                         if user_input.lower().startswith('/msg'):
@@ -158,6 +158,7 @@ def encrypt_message(text, password):
     key = hashlib.sha256(password).digest()
     iv = Random.new().read(AES.block_size)
     enc = AES.new(key, AES.MODE_CBC, iv)
+    # pad the text to allow for block cipher
     if len(text) % 16 != 0:
         text += ' ' * (16 - len(text) % 16)
     text = text.encode('utf-8')
@@ -186,4 +187,6 @@ if __name__ == "__main__":
         c.start()
     except KeyboardInterrupt:
         c.stop()
+    finally:
+        print("Client Closed!")
 

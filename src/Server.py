@@ -6,6 +6,8 @@ import queue
 import src.message as message
 import src.DbManager as Db
 
+# General stuff to add:
+# TODO: allow server to encrypt connections between client and server.
 
 
 class Server:
@@ -29,7 +31,7 @@ class Server:
         self.dbmgr.cur.close()
         self.dbmgr.conn.close()
 
-    def listen(self):
+    def listen(self):  # TODO: get the server to notice disconnections.
         self.sock.listen(5)
         # Type : { Connection : Queue }
         message_queue = {}
@@ -39,7 +41,7 @@ class Server:
             try:
                 inputs_ready, outputs_ready, _ = select.select(inputs, outputs, [])
                 for connection in inputs_ready:
-                    if connection is self.sock:
+                    if connection is self.sock:  # TODO: break down into more functiions
                         # Handle initial client connections
                         conn, addr = connection.accept()
                         print("New connection from ", addr)
@@ -143,9 +145,8 @@ class Server:
                     pass
                 del self.users[[k for k, v in self.users.items() if v == connection][0]]
 
-
-    def queue_message(self, message_queue, message, connection, outputs):
-        message_queue[connection].put(message)
+    def queue_message(self, message_queue, msg, connection, outputs):
+        message_queue[connection].put(msg)
         if connection not in outputs:
             outputs.append(connection)
 
