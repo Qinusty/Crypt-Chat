@@ -3,9 +3,12 @@ import socket
 import select
 import sys
 import queue
+
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA512
 from Crypto import Random
+from Crypto.PublicKey import RSA
+
 import hashlib
 import binascii
 import src.message as message

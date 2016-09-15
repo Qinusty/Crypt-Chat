@@ -5,10 +5,11 @@ import sys
 import queue
 import src.message as message
 import src.DbManager as Db
+from Crypto.PublicKey import RSA
 
 # General stuff to add:
-# TODO: allow server to encrypt connections between client and server.
-
+# TODO: allow server to encrypt connections between client and server. # IMPLEMENT DIFFIE HELLMAN
+# TODO: Implement a group chat system.
 
 class Server:
     def __init__(self):
@@ -20,6 +21,18 @@ class Server:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
         self.users = {}  # String : Connection
         self.dbmgr = Db.DatabaseManager("enchat", "postgres", "develpass")
+        self.load_config()
+
+    def load_config(self):
+        try:
+            json_data = json.load(open("../server_config.json"))
+            self.HOST = json_data["server-address"]
+            self.PORT = json_data["port"]
+            return True
+        except FileNotFoundError:
+            return False
+        except ValueError:
+            return False
 
     def start(self):
         self.running = True
