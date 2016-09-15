@@ -15,8 +15,8 @@ class Server:
     def __init__(self):
         super().__init__()
         self.running = False
-        self.HOST = '127.0.0.1'
-        self.PORT = 5000
+        self.HOST = '127.0.0.1'  # default
+        self.PORT = 5000  # default
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
         self.users = {}  # String : Connection
@@ -30,6 +30,7 @@ class Server:
             self.PORT = json_data["port"]
             return True
         except FileNotFoundError:
+            print("Config file not found! (server_config.json)")
             return False
         except ValueError:
             return False
@@ -37,7 +38,7 @@ class Server:
     def start(self):
         self.running = True
         self.sock.bind((self.HOST, self.PORT))
-        self.listen()
+        self.listen(5)
 
     def stop(self):
         self.running = False
@@ -45,7 +46,6 @@ class Server:
         self.dbmgr.conn.close()
 
     def listen(self):  # TODO: get the server to notice disconnections.
-        self.sock.listen(5)
         # Type : { Connection : Queue }
         message_queue = {}
         inputs = [self.sock, sys.stdin]
@@ -125,9 +125,8 @@ class Server:
                                 outputs.append(connection)
                     else:
                         self.queue_message(message_queue, message.Response(message.ERROR,
-                                                            "Name Taken! Try another")
-                                                          .to_json(), connection, outputs)
-
+                                                                           "Name Taken! Try another")
+                                           .to_json(), connection, outputs)
             else:
                 # hasn't logged in # need to handle /register
                 resp = message.Response(message.ERROR, "Please connect via a valid username/password "
@@ -158,10 +157,16 @@ class Server:
                     pass
                 del self.users[[k for k, v in self.users.items() if v == connection][0]]
 
-    def queue_message(self, message_queue, msg, connection, outputs):
-        message_queue[connection].put(msg)
-        if connection not in outputs:
-            outputs.append(connection)
+
+def send_message(message, connection):
+    # TODO: add RSA
+    connection.send(message.encode('utf-8'))
+
+
+def queue_message(message_queue, msg, connection, outputs):
+    message_queue[connection].put(msg)
+    if connection not in outputs:
+        outputs.append(connection)
 
 if __name__ == "__main__":
     s = Server()
