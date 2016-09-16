@@ -8,11 +8,13 @@ from Crypto.Cipher import AES
 from Crypto.Hash import SHA512
 from Crypto import Random
 from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
 
 import hashlib
 import binascii
 import src.message as message
 
+import src.Encryption as crypto
 
 class Client:
     def __init__(self):
@@ -22,6 +24,10 @@ class Client:
         self.server_port = 5000
         self.server_address = ''
         self.running = False
+        print("Generating secure key...")
+        self.client_key = RSA.generate(2048)
+        self.server_key = None
+        self.user_keys = {}  # username : publicKey
 
     def load_config(self):
         try:
@@ -55,6 +61,7 @@ class Client:
         self.run()
 
     def run(self):
+        handshaken = False
         message_queue = queue.Queue()
         inputs = [self.sock, sys.stdin]
         while self.running:
@@ -106,9 +113,28 @@ class Client:
                             sys.exit(0)
 
                 if s == self.sock:
-                    received = s.recv(1024).decode('utf-8')
+                    received = s.recv(4096)
+                    if handshaken:
+                        received = crypto.decrypt_communication(received, self.client_key)
+                    else:
+                        received = received.decode('utf-8')
+
+
                     if len(received) > 0:
                         json_data = json.loads(received)
+                        if json_data['type'] == 'pubkey':
+                            if json_data.get('user') is None:  # Server public key
+                                print('Received Handshake request')
+                                self.server_key = RSA.importKey(json_data['key'])
+                                msg = {'type': 'pubkey', 'key':  self.client_key.publickey()
+                                                                                .exportKey('PEM')
+                                                                                .decode('utf-8')}
+                                s.send(json.dumps(msg).encode('utf-8'))
+                                print('Performing Handshake...')
+                                handshaken = True
+                            else:  # user public key
+                                user = json_data['user']
+                                self.user_keys[user] = RSA.importKey(json_data['key'])
                         if json_data['type'] == 'message':
                             print("From {}: {}".format(json_data['from'],
                                                        json_data['message']))
@@ -140,10 +166,8 @@ class Client:
 
             while not message_queue.empty():
                 msg = message_queue.get_nowait()
-                self.sock.send(msg.encode('utf-8'))
-
-
-
+                data = msg.encode('utf-8')
+                self.sock.send(crypto.encrypt_communication(data, self.server_key))
 
     def stop(self):
         try:
@@ -155,6 +179,7 @@ class Client:
             pass
 
         sys.exit(0)
+
 
 
 def encrypt_message(text, password):

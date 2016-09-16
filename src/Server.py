@@ -5,11 +5,15 @@ import sys
 import queue
 import src.message as message
 import src.DbManager as Db
+import src.Encryption as crypto
+
 from Crypto.PublicKey import RSA
+
 
 # General stuff to add:
 # TODO: allow server to encrypt connections between client and server. # IMPLEMENT DIFFIE HELLMAN
 # TODO: Implement a group chat system.
+
 
 class Server:
     def __init__(self):
@@ -22,6 +26,9 @@ class Server:
         self.users = {}  # String : Connection
         self.dbmgr = Db.DatabaseManager("enchat", "postgres", "develpass")
         self.load_config()
+        print("Generating secure key...")
+        self.server_key = RSA.generate(2048)
+        self.keys = {}  # Connection : publicKey
 
     def load_config(self):
         try:
@@ -38,7 +45,7 @@ class Server:
     def start(self):
         self.running = True
         self.sock.bind((self.HOST, self.PORT))
-        self.listen(5)
+        self.listen()
 
     def stop(self):
         self.running = False
@@ -47,6 +54,7 @@ class Server:
 
     def listen(self):  # TODO: get the server to notice disconnections.
         # Type : { Connection : Queue }
+        self.sock.listen(5)
         message_queue = {}
         inputs = [self.sock, sys.stdin]
         outputs = []
@@ -54,7 +62,7 @@ class Server:
             try:
                 inputs_ready, outputs_ready, _ = select.select(inputs, outputs, [])
                 for connection in inputs_ready:
-                    if connection is self.sock:  # TODO: break down into more functiions
+                    if connection is self.sock:  # TODO: break down into more functions
                         # Handle initial client connections
                         conn, addr = connection.accept()
                         print("New connection from ", addr)
@@ -62,14 +70,20 @@ class Server:
                         inputs.append(conn)
                         # create a queue
                         message_queue[conn] = queue.Queue()
+                        pubkey = self.public_key()
+                        msg = {'type': 'pubkey', 'key': pubkey}
+                        conn.send(json.dumps(msg).encode('utf-8'))
                     elif connection is sys.stdin:
                         # Handle server admin commands perhaps
                         # TODO: Handle admin input
                         print("! ADMIN INPUT NEEDS IMPLEMENTATION !")
                     else:
-                        received = ""
-                        received = connection.recv(1024).decode('utf-8')
+                        received = connection.recv(4096)
                         if len(received) > 0:
+                            if connection in self.keys.keys():
+                                received = crypto.decrypt_communication(received, self.server_key)  # decrypt RSA with privkey
+                            else:
+                                received = received.decode('utf-8')
                             self.handle_user_conn(message_queue, connection, received, outputs, inputs)
 
                 for connection in outputs_ready:
@@ -78,7 +92,8 @@ class Server:
                     except queue.Empty:
                         outputs.remove(connection)
                     else:
-                        connection.send(next_msg.encode('utf-8'))
+
+                        self.send_message(next_msg, connection)
 
             except select.error:
                 print("Select threw an error!")
@@ -86,53 +101,56 @@ class Server:
     def handle_user_conn(self, message_queue, connection, received, outputs, inputs):
         json_data = json.loads(received)
         # Handle unique connections via lookup with self.users
+
         if connection not in self.users.values():
-            if json_data['type'] == message.REQUEST_TYPE:
+            if json_data['type'] == 'pubkey':
+                key = RSA.importKey(json_data['key'])
+                self.keys[connection] = key
+            elif json_data['type'] == message.REQUEST_TYPE:
                 args = json_data['args']
                 if json_data['request'] == message.AUTH_REQUEST:
                     print('Attempted login of {}'.format(args[0]), end=": ")
                     if self.dbmgr.validate_user(args[0], args[1]):  # if valid
                         if args[0] in self.users.keys():  # if user is already logged in
                             print("ALREADY LOGGED IN!")
-                            self.queue_message(message_queue, message.Response(message.ERROR, "This user is already"
-                                                                                              " logged in!").to_json()
-                                               , connection, outputs)
+                            queue_message(message_queue, message.Response(message.ERROR, "This user is already"
+                                                                                         " logged in!").to_json(),
+                                          connection, outputs)
                         else:
                             print("SUCCESS")
-                            self.queue_message(message_queue, message.Response(message.SUCCESS,
-                                                                               "Authentication successful "
-                                                                               "with name {}.".format(args[0])
-                                                                               ).to_json(), connection, outputs)
+
+                            queue_message(message_queue, message.Response(message.SUCCESS,
+                                                                          "Authentication successful "
+                                                                          "with name {}.".format(args[0])
+                                                                          ).to_json(), connection, outputs)
                             self.users[args[0]] = connection
                             print(self.users)
                     else:
                         print("FAILED")
-                        self.queue_message(message_queue, message.Response(message.ERROR,
-                                                                           "Authentication unsuccessful!: "
-                                                                           "Invalid username or password")
-                                           .to_json(), connection, outputs)
+                        queue_message(message_queue, message.Response(message.ERROR,
+                                                                      "Authentication unsuccessful!: "
+                                                                      "Invalid username or password")
+                                      .to_json(), connection, outputs)
                 elif json_data['request'] == message.REGISTER_REQUEST:
                     if not self.dbmgr.user_exists(args[0]):
                         #  register
                         if self.dbmgr.add_user(args[0], args[1]):
-                            self.queue_message(message_queue, message.Response(message.SUCCESS,
-                                                                               "Authentication successful as: {}"
-                                                                               .format(args[0])).to_json(),
-                                               connection, outputs)
+                            queue_message(message_queue, message.Response(message.SUCCESS,
+                                                                          "Authentication successful as: {}"
+                                                                          .format(args[0])).to_json(),
+                                          connection, outputs)
                             print("New user registered as {}!".format(args[0]))
                             self.users[args[0]] = connection
-                            if connection not in outputs:
-                                outputs.append(connection)
                     else:
-                        self.queue_message(message_queue, message.Response(message.ERROR,
-                                                                           "Name Taken! Try another")
-                                           .to_json(), connection, outputs)
+                        queue_message(message_queue, message.Response(message.ERROR,
+                                                                      "Name Taken! Try another")
+                                      .to_json(), connection, outputs)
             else:
                 # hasn't logged in # need to handle /register
                 resp = message.Response(message.ERROR, "Please connect via a valid username/password "
                                                        "or register using /register <username> "
                                                        "<password>").to_json()
-                self.queue_message(message_queue, resp, connection, outputs)
+                queue_message(message_queue, resp, connection, outputs)
         else:  # connected user
             if json_data['type'] in [message.SECUREMESSAGE_TYPE, message.MESSAGE_TYPE]:
                 existing_user = False
@@ -144,11 +162,11 @@ class Server:
                         break
                 if not existing_user:  # if user isn't connected
                     response = message.Response(message.ERROR, "User not connected!").to_json()
-                    self.queue_message(message_queue, response, outgoing_conn, outputs)
+                    queue_message(message_queue, response, outgoing_conn, outputs)
                 else:
-                    self.queue_message(message_queue, json.dumps(json_data), outgoing_conn, outputs)
-                print(json_data['from'], " -> ", json_data['to']
-                      , " : SECURE" if json_data['type'] == message.SECUREMESSAGE_TYPE else "")
+                    queue_message(message_queue, json.dumps(json_data), outgoing_conn, outputs)
+                print(json_data['from'], " -> ", json_data['to'],
+                      " : SECURE" if json_data['type'] == message.SECUREMESSAGE_TYPE else "")
             elif json_data['type'] == 'logout':
                 inputs.remove(connection)
                 try:
@@ -157,10 +175,15 @@ class Server:
                     pass
                 del self.users[[k for k, v in self.users.items() if v == connection][0]]
 
+    def send_message(self, msg, connection):
+        # TODO: add RSA
+        data = msg.encode('utf-8')
+        data = crypto.encrypt_communication(data, self.keys[connection])  # encrypt with users public key
+        connection.send(data)
 
-def send_message(message, connection):
-    # TODO: add RSA
-    connection.send(message.encode('utf-8'))
+    def public_key(self):
+        pubkey = self.server_key.publickey()
+        return pubkey.exportKey('PEM').decode('utf-8')
 
 
 def queue_message(message_queue, msg, connection, outputs):
