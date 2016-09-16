@@ -3,14 +3,8 @@ import socket
 import select
 import sys
 import queue
-
-from Crypto.Cipher import AES
 from Crypto.Hash import SHA512
-from Crypto import Random
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
-
-import hashlib
 import binascii
 import src.message as message
 
@@ -18,14 +12,13 @@ import src.Encryption as crypto
 
 class Client:
     def __init__(self):
-        self.passwords = {}
         self.sock = socket.socket()
         self.client_name = ''
         self.server_port = 5000
         self.server_address = ''
         self.running = False
         print("Generating secure key...")
-        self.client_key = RSA.generate(2048)
+        self.client_key = RSA.generate(4096)
         self.server_key = None
         self.user_keys = {}  # username : publicKey
 
@@ -61,12 +54,11 @@ class Client:
         self.run()
 
     def run(self):
-        handshaken = False
+        waiting_for_key = []
         message_queue = queue.Queue()
         inputs = [self.sock, sys.stdin]
         while self.running:
             inputs_ready, _, _ = select.select(inputs, [], [])
-
             for s in inputs_ready:
                 if s == sys.stdin: # TODO: break down into functions
                     user_input = sys.stdin.readline()
@@ -75,25 +67,15 @@ class Client:
                             split_user_input = user_input.split(' ')
                             to = split_user_input[1]
                             text = " ".join(split_user_input[2:])
-                            if self.passwords.get(to) is not None:
-                                cipher_text, iv = encrypt_message(text, self.passwords[to])
-                                json_message = message.SecureMessage(to, cipher_text, iv, fr=self.client_name).to_json()
-                            else:
-                                json_message = message.Message(to, text, fr=self.client_name).to_json()
+                            json_message = message.Message(to, text, self.client_name).data
                             message_queue.put(json_message)
-
-                        elif user_input.lower().startswith('/password'):  # /password John P4$$w0rd
-                            split_user_input = user_input.strip().split(' ')
-                            # add a new password
-                            self.passwords[split_user_input[1]] = split_user_input[2].encode()
-                            print("Password added! Try sending this person a message!")
-
                         elif user_input.lower().startswith('/register'):
                             split_user_input = user_input.strip().split(' ')
                             usn = split_user_input[1]
                             self.client_name = usn
                             pswhash = hash_password(split_user_input[2])
-                            request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).to_json()
+                            pswhash = crypto.encrypt_message(pswhash, self.server_key)
+                            request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).data
                             message_queue.put(request)
                             print("register request: ", request)
 
@@ -104,26 +86,21 @@ class Client:
                             except ValueError:
                                 print("Invalid command! /login <username> <password>")
                             passhash = hash_password(psw)
+                            passhash = crypto.encrypt_message(passhash, self.server_key)
                             rq = message.Request(message.AUTH_REQUEST, [usn, passhash])
                             self.client_name = usn
-                            print(rq.to_json())
-                            message_queue.put(rq.to_json())
+                            #  print(rq.to_json())
+                            message_queue.put(rq.data)
                         elif user_input.lower() == '/exit\n':
                             self.stop()
                             sys.exit(0)
 
                 if s == self.sock:
-                    received = s.recv(4096)
-                    if handshaken:
-                        received = crypto.decrypt_communication(received, self.client_key)
-                    else:
-                        received = received.decode('utf-8')
-
-
+                    received = s.recv(4096).decode('utf-8')
                     if len(received) > 0:
                         json_data = json.loads(received)
                         if json_data['type'] == 'pubkey':
-                            if json_data.get('user') is None:  # Server public key
+                            if json_data.get('tag') is None:  # Server public key
                                 print('Received Handshake request')
                                 self.server_key = RSA.importKey(json_data['key'])
                                 msg = {'type': 'pubkey', 'key':  self.client_key.publickey()
@@ -131,33 +108,25 @@ class Client:
                                                                                 .decode('utf-8')}
                                 s.send(json.dumps(msg).encode('utf-8'))
                                 print('Performing Handshake...')
-                                handshaken = True
-                            else:  # user public key
-                                user = json_data['user']
-                                self.user_keys[user] = RSA.importKey(json_data['key'])
-                        if json_data['type'] == 'message':
-                            print("From {}: {}".format(json_data['from'],
-                                                       json_data['message']))
-                        elif json_data['type'] == 'secure-message':
-                            if self.passwords.get(json_data['from']) is None:
-                                print("Secure Message From {}: \n{}".format(json_data['from'], json_data['message']))
-                                print("You received a message from {} but you don't have a password set for encryption "
-                                      "with them.\nThe key must be symmetric and shared between the two of you.\n"
-                                      "You can enter one now by using the /password <NAME> <Password> command."
-                                      .format(json_data['from']))
                             else:
-                                try:
-                                    msg = decrypt_message(json_data['message'],
-                                                          self.passwords[json_data['from']],
-                                                          json_data['iv'])
-                                except UnicodeDecodeError:
-                                    print("Non symmetric key! Error Decoding message "
-                                          "received from {}".format(json_data['from']))
-                                else:
-                                    print("Secure Message From {}: \n{}".format(json_data['from'], msg))
-
+                                user = json_data['tag']
+                                print('Server returned public key for {}.'.format(user))
+                                self.user_keys[user] = RSA.importKey(json_data['message'])
+                                for msg in waiting_for_key:
+                                    if user == msg['to']:
+                                        message_queue.put(msg)  # put back in message queue to be sent
+                                        print('Resending message: {} \nto {}.'.format(msg['message'], msg['to']))
+                                        waiting_for_key.remove(msg)  # remove from waiting
+                        elif json_data['type'] == 'message':
+                            msg = crypto.decrypt_message(json_data['message'], self.client_key)
+                            print('<{}>: {}'.format(json_data['from'], msg))
                         elif json_data['type'] == 'error':
                             print("ERROR: " + json_data['message'])
+                        elif json_data['type'] == 'InvalidUserError':  # remove from waiting
+                            print('Server doesn\'t have public key for user, sorry')
+                            for msg in waiting_for_key:
+                                if user == json_data['message']:
+                                    waiting_for_key.remove(msg)
                         elif json_data['type'] == 'auth-error':
                             print(json_data['message'])
                             self.client_name = ''
@@ -166,13 +135,28 @@ class Client:
 
             while not message_queue.empty():
                 msg = message_queue.get_nowait()
-                data = msg.encode('utf-8')
-                self.sock.send(crypto.encrypt_communication(data, self.server_key))
+
+                if msg['type'] == 'message':
+                    if msg['to'] not in self.user_keys.keys():
+                        waiting_for_key.append(msg)  # put it in the waiting pile
+                        # send a request for public key
+                        print('Don\'t have the public key, sending a request for it.')
+                        msg = message.Request('pubkey', [msg['to'], ]).data
+                    else:
+                        msg['message'] = crypto.encrypt_message(msg['message'].encode('utf-8'), self.user_keys[msg['to']])
+                if isinstance(msg, dict):
+                    data = json.dumps(msg)
+                else:
+                    data = msg
+                data = data.encode('utf-8')
+                print(json.dumps(msg))
+                self.sock.send(data)
 
     def stop(self):
         try:
             data = {'type': 'logout'}
-            self.sock.send(json.dumps(data).encode('utf-8'))
+            data = json.dumps(data)
+            self.sock.send(data.encode('utf-8'))
             self.running = False
             self.sock.close()
         except:
@@ -181,31 +165,9 @@ class Client:
         sys.exit(0)
 
 
-
-def encrypt_message(text, password):
-    key = hashlib.sha256(password).digest()
-    iv = Random.new().read(AES.block_size)
-    enc = AES.new(key, AES.MODE_CBC, iv)
-    # pad the text to allow for block cipher
-    if len(text) % 16 != 0:
-        text += ' ' * (16 - len(text) % 16)
-    text = text.encode('utf-8')
-    cipher_text = enc.encrypt(text)
-    return binascii.hexlify(cipher_text).decode('utf-8'), binascii.hexlify(iv).decode('utf-8')
-
-
-def decrypt_message(cipher_text, password, iv):
-    cipher_text = binascii.unhexlify(cipher_text.encode('utf-8'))
-    iv = binascii.unhexlify(iv.encode('utf-8'))
-    key = hashlib.sha256(password).digest()
-    dec = AES.new(key, AES.MODE_CBC, iv)
-
-    return dec.decrypt(cipher_text).decode().strip()
-
-
 def hash_password(pwd):
     pswhash = SHA512.new(pwd.encode('utf-8')).digest()
-    pswhash = binascii.hexlify(pswhash).decode('utf-8')
+    pswhash = binascii.hexlify(pswhash)
     return pswhash
 
 

@@ -6,7 +6,7 @@ import queue
 import src.message as message
 import src.DbManager as Db
 import src.Encryption as crypto
-
+import binascii
 from Crypto.PublicKey import RSA
 
 
@@ -27,7 +27,7 @@ class Server:
         self.dbmgr = Db.DatabaseManager("enchat", "postgres", "develpass")
         self.load_config()
         print("Generating secure key...")
-        self.server_key = RSA.generate(2048)
+        self.server_key = RSA.generate(4096)
         self.keys = {}  # Connection : publicKey
 
     def load_config(self):
@@ -80,10 +80,7 @@ class Server:
                     else:
                         received = connection.recv(4096)
                         if len(received) > 0:
-                            if connection in self.keys.keys():
-                                received = crypto.decrypt_communication(received, self.server_key)  # decrypt RSA with privkey
-                            else:
-                                received = received.decode('utf-8')
+                            received = received.decode('utf-8')
                             self.handle_user_conn(message_queue, connection, received, outputs, inputs)
 
                 for connection in outputs_ready:
@@ -110,7 +107,8 @@ class Server:
                 args = json_data['args']
                 if json_data['request'] == message.AUTH_REQUEST:
                     print('Attempted login of {}'.format(args[0]), end=": ")
-                    if self.dbmgr.validate_user(args[0], args[1]):  # if valid
+                    passhash = crypto.decrypt_message(args[1], self.server_key)
+                    if self.dbmgr.validate_user(args[0], passhash):  # if valid
                         if args[0] in self.users.keys():  # if user is already logged in
                             print("ALREADY LOGGED IN!")
                             queue_message(message_queue, message.Response(message.ERROR, "This user is already"
@@ -134,7 +132,8 @@ class Server:
                 elif json_data['request'] == message.REGISTER_REQUEST:
                     if not self.dbmgr.user_exists(args[0]):
                         #  register
-                        if self.dbmgr.add_user(args[0], args[1]):
+                        passhash = crypto.decrypt_message(args[1], self.server_key)
+                        if self.dbmgr.add_user(args[0], passhash):
                             queue_message(message_queue, message.Response(message.SUCCESS,
                                                                           "Authentication successful as: {}"
                                                                           .format(args[0])).to_json(),
@@ -152,7 +151,7 @@ class Server:
                                                        "<password>").to_json()
                 queue_message(message_queue, resp, connection, outputs)
         else:  # connected user
-            if json_data['type'] in [message.SECUREMESSAGE_TYPE, message.MESSAGE_TYPE]:
+            if json_data['type'] in [message.MESSAGE_TYPE]:
                 existing_user = False
                 outgoing_conn = None
                 for username, user_conn in self.users.items():
@@ -161,7 +160,7 @@ class Server:
                         outgoing_conn = user_conn
                         break
                 if not existing_user:  # if user isn't connected
-                    response = message.Response(message.ERROR, "User not connected!").to_json()
+                    response = message.Response(message.ERROR, "User not connected!")
                     queue_message(message_queue, response, outgoing_conn, outputs)
                 else:
                     queue_message(message_queue, json.dumps(json_data), outgoing_conn, outputs)
@@ -174,11 +173,26 @@ class Server:
                 except ValueError:
                     pass
                 del self.users[[k for k, v in self.users.items() if v == connection][0]]
+            elif json_data['type'] == message.REQUEST_TYPE:
+                if json_data['request'] == 'pubkey':
+                    user = json_data['args'][0]
+                    print('received request for {}\'s public key'.format(user))
+                    conn = self.users.get(user)
+                    if conn is None:
+                        queue_message(message_queue, message.Response('InvalidUserError', user).to_json(),
+                                      connection, outputs)
+                        print('public key is not on record')
+                    else:
+                        key = self.keys[conn]
+                        print('Found public key, sending it.')
+                        queue_message(message_queue, message.Response('pubkey',
+                                                                      key.exportKey('PEM').decode('utf-8'),
+                                                                      tag=user).to_json(),
+                                      connection, outputs)
 
     def send_message(self, msg, connection):
         # TODO: add RSA
         data = msg.encode('utf-8')
-        data = crypto.encrypt_communication(data, self.keys[connection])  # encrypt with users public key
         connection.send(data)
 
     def public_key(self):
