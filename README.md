@@ -1,3 +1,17 @@
 # Client/Server encrypted chat application
 
-This project will allow you to host your own encrypted chat server and have multiple clients connect and chat.
+## Client
+Modify config.json and add server details.
+```
+git clone git@github.com:Qinusty/Crypt-Chat.git
+cd Crypt-Chat/src
+python Client.py
+```
+
+## Server
+Configure server via server_config.json
+```
+git clone git@github.com:Qinusty/Crypt-Chat.git
+cd Crypt-Chat/src
+python Server.py
+```
