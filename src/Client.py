@@ -77,7 +77,6 @@ class Client:
                             pswhash = crypto.encrypt_message(pswhash, self.server_key)
                             request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).data
                             message_queue.put(request)
-                            print("register request: ", request)
 
                         elif user_input.lower().startswith('/login'):
                             split_user_input = user_input.strip().split(' ')
@@ -115,7 +114,7 @@ class Client:
                                 for msg in waiting_for_key:
                                     if user == msg['to']:
                                         message_queue.put(msg)  # put back in message queue to be sent
-                                        print('Resending message: {} \nto {}.'.format(msg['message'], msg['to']))
+                                        # print('Resending message: {} \nto {}.'.format(msg['message'], msg['to']))
                                         waiting_for_key.remove(msg)  # remove from waiting
                         elif json_data['type'] == 'message':
                             msg = crypto.decrypt_message(json_data['message'], self.client_key)
@@ -140,7 +139,7 @@ class Client:
                     if msg['to'] not in self.user_keys.keys():
                         waiting_for_key.append(msg)  # put it in the waiting pile
                         # send a request for public key
-                        print('Don\'t have the public key, sending a request for it.')
+                        # print('Don\'t have the public key, sending a request for it.')
                         msg = message.Request('pubkey', [msg['to'], ]).data
                     else:
                         msg['message'] = crypto.encrypt_message(msg['message'].encode('utf-8'), self.user_keys[msg['to']])
@@ -149,7 +148,7 @@ class Client:
                 else:
                     data = msg
                 data = data.encode('utf-8')
-                print(json.dumps(msg))
+                #print(json.dumps(msg))
                 self.sock.send(data)
 
     def stop(self):
