@@ -3,16 +3,15 @@ import json
 import select
 import sys
 import queue
-import src.message as message
-import src.DbManager as Db
-import src.Encryption as crypto
-import binascii
+from src import message as message
+from src import DbManager as Db
+from src import Encryption as crypto
 from Crypto.PublicKey import RSA
 
 
 # General stuff to add:
-# TODO: allow server to encrypt connections between client and server. # IMPLEMENT DIFFIE HELLMAN
 # TODO: Implement a group chat system.
+# TODO: Fix user crashing not removing them from users.
 
 
 class Server:
@@ -21,20 +20,32 @@ class Server:
         self.running = False
         self.HOST = '127.0.0.1'  # default
         self.PORT = 5000  # default
+        # default values, overwritten by load_config (specify in server_config.json)
+        self.db_user = 'postgres' ' default'
+        self.db_host = '127.0.0.1'
+        self.db_password = ''
+        self.db_name = 'postgres'
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
         self.users = {}  # String : Connection
-        self.dbmgr = Db.DatabaseManager("enchat", "postgres", "develpass")
         self.load_config()
+        self.dbmgr = Db.DatabaseManager(self.db_name, self.db_host, self.db_user, self.db_password)
+        print('Successfully connected to the Database')
+        print('Running server on {}:{}'.format(self.HOST, self.PORT))
         print("Generating secure key...")
         self.server_key = RSA.generate(4096)
         self.keys = {}  # Connection : publicKey
 
     def load_config(self):
         try:
-            json_data = json.load(open("../server_config.json"))
+            json_data = json.load(open("server_config.json"))
             self.HOST = json_data["server-address"]
             self.PORT = json_data["port"]
+            self.db_host = json_data["db-host"]
+            self.db_user = json_data["db-user"]
+            self.db_password = json_data["db-password"]
+            self.db_name = json_data["db-name"]
             return True
         except FileNotFoundError:
             print("Config file not found! (server_config.json)")
@@ -122,7 +133,6 @@ class Server:
                                                                           "with name {}.".format(args[0])
                                                                           ).to_json(), connection, outputs)
                             self.users[args[0]] = connection
-                            print(self.users)
                     else:
                         print("FAILED")
                         queue_message(message_queue, message.Response(message.ERROR,

@@ -6,9 +6,8 @@ import queue
 from Crypto.Hash import SHA512
 from Crypto.PublicKey import RSA
 import binascii
-import src.message as message
-
-import src.Encryption as crypto
+from src import message as message
+from src import Encryption as crypto
 
 class Client:
     def __init__(self):
@@ -24,11 +23,12 @@ class Client:
 
     def load_config(self):
         try:
-            json_data = json.load(open("../config.json"))
+            json_data = json.load(open("./config.json"))
             self.server_address = json_data["server-address"]
             self.server_port = json_data["port"]
             return True
         except FileNotFoundError:
+            print("Config file not found!")
             return False
         except ValueError:
             return False

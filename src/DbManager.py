@@ -3,8 +3,8 @@ import psycopg2
 
 class DatabaseManager:
 
-    def __init__(self, dbname, user, password):
-        self.conn = psycopg2.connect(database=dbname, user=user, password=password)
+    def __init__(self, dbname, host, user, password):
+        self.conn = psycopg2.connect(database=dbname, user=user, password=password, host=host)
         self.cur = self.conn.cursor()
         self.conn.autocommit = True
 
