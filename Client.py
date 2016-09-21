@@ -19,7 +19,10 @@ class Client:
         print("Generating secure key...")
         self.client_key = RSA.generate(4096)
         self.server_key = None
-        self.user_keys = {}  # username : publicKey
+        self.user_keys = {}   # username : publicKey
+        # TODO: Add logs to prepare for seperate channels of communication.
+        self.group_logs = {}  # username : [String]
+        self.user_logs = {}   # username : [String]
 
     def load_config(self):
         try:
@@ -60,7 +63,7 @@ class Client:
         while self.running:
             inputs_ready, _, _ = select.select(inputs, [], [])
             for s in inputs_ready:
-                if s == sys.stdin: # TODO: break down into functions
+                if s == sys.stdin:  # TODO: break down into functions
                     user_input = sys.stdin.readline()
                     if user_input.startswith('/'):
                         if user_input.lower().startswith('/msg'):

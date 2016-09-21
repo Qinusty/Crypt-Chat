@@ -41,9 +41,15 @@ Run commands and authenticate when required. You may need to configure postgres 
 Take a look here [pg_hba](https://www.postgresql.org/docs/9.1/static/auth-pg-hba-conf.html)
 ```
 psql -U <user> -c 'CREATE DATABASE <dbname>'
-psql -U <user> <dbname> < schema.sql
+psql -U <user> <dbname> < DDL/schema.sql
 ```
 Configure server and database connection settings via server_config.json
 ```
 python Server.py
 ```
+
+## Security disclaimer
+I cannot guarantee completely secure communications due the self taught nature of my education on encryption. 
+However the end to end encryption uses 4096 bit RSA keys and uses the PKCS1_OAEP standard for RSA encryption and
+passwords are locally hashed using SHA512 and transmitted with end to end encryption before being
+stored on the server's database as the unencrypted hash.
