@@ -201,7 +201,6 @@ class Server:
                                       connection, outputs)
 
     def send_message(self, msg, connection):
-        # TODO: add RSA
         data = msg.encode('utf-8')
         connection.send(data)
 
