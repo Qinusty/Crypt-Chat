@@ -11,7 +11,8 @@ services:
 
 before_script:
   - psql -U postgres postgres < schema.sql
+  - pip install pytest
 
 install: "pip install -r server-requirements.txt"
 
-script: pytest test_1.py
+script: py.test test_1.py

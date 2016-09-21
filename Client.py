@@ -175,7 +175,10 @@ if __name__ == "__main__":
     try:
         c.start()
     except KeyboardInterrupt:
-        c.stop()
+        pass
+    except Exception as e:
+        print(e)
     finally:
+        c.stop()
         print("Client Closed!")
 
