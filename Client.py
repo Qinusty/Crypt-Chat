@@ -69,7 +69,7 @@ class Client:
                         if user_input.lower().startswith('/msg'):
                             split_user_input = user_input.split(' ')
                             to = split_user_input[1]
-                            text = " ".join(split_user_input[2:])
+                            text = " ".join(split_user_input[2:]).strip('\n')
                             json_message = message.Message(to, text, self.client_name).data
                             message_queue.put(json_message)
                         elif user_input.lower().startswith('/register'):
