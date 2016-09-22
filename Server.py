@@ -13,6 +13,7 @@ from Crypto.PublicKey import RSA
 # TODO: Implement a group chat system.
 
 
+
 class Server:
     def __init__(self):
         super().__init__()
@@ -27,6 +28,8 @@ class Server:
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
+
+        self.inputs = [self.sock, stdin]
         self.users = {}  # String : Connection
         self.load_config()
         self.dbmgr = Db.DatabaseManager(self.db_name, self.db_host, self.db_user, self.db_password)
@@ -38,7 +41,8 @@ class Server:
 
     def load_config(self):
         try:
-            json_data = json.load(open("server_config.json"))
+            f = open("server_config.json")
+            json_data = json.load(f)
             self.HOST = json_data["server-address"]
             self.PORT = json_data["port"]
             self.db_host = json_data["db-host"]
@@ -51,6 +55,9 @@ class Server:
             return False
         except ValueError:
             return False
+        finally:
+            if not f.closed:
+                f.close()
 
     def start(self):
         self.running = True
@@ -61,23 +68,30 @@ class Server:
         self.running = False
         self.dbmgr.cur.close()
         self.dbmgr.conn.close()
+        for i in self.inputs:
+            if i is not stdin:
+                try:
+                    i.send(json.dumps({'type': 'shutdown'}).encode('utf-8'))
+                    i.close()
+                except BrokenPipeError:
+                    pass
+        self.sock.close()
 
     def listen(self):
         # Type : { Connection : Queue }
         self.sock.listen(5)
         message_queue = {}
-        inputs = [self.sock, stdin]
         outputs = []
         while self.running:
             try:
-                inputs_ready, outputs_ready, _ = select.select(inputs, outputs, [])
+                inputs_ready, outputs_ready, _ = select.select(self.inputs, outputs, [])
                 for connection in inputs_ready:
                     if connection is self.sock:  # TODO: break down into more functions
                         # Handle initial client connections
                         conn, addr = connection.accept()
                         print("New connection from ", addr)
                         conn.setblocking(0)
-                        inputs.append(conn)
+                        self.inputs.append(conn)
                         # create a queue
                         message_queue[conn] = queue.Queue()
                         pubkey = self.public_key()
@@ -92,7 +106,7 @@ class Server:
                         received = connection.recv(4096)
                         if len(received) > 0:
                             received = received.decode('utf-8')
-                            self.handle_user_conn(message_queue, connection, received, outputs, inputs)
+                            self.handle_user_conn(message_queue, connection, received, outputs)
 
                 for connection in outputs_ready:
                     try:
@@ -106,7 +120,7 @@ class Server:
             except select.error:
                 print("Select threw an error!")
 
-    def handle_user_conn(self, message_queue, connection, received, outputs, inputs):
+    def handle_user_conn(self, message_queue, connection, received, outputs):
         json_data = json.loads(received)
         # Handle unique connections via lookup with self.users
 
@@ -177,7 +191,7 @@ class Server:
                 print(json_data['from'], " -> ", json_data['to'],
                       " : SECURE" if json_data['type'] == message.SECUREMESSAGE_TYPE else "")
             elif json_data['type'] == 'logout':
-                inputs.remove(connection)
+                self.inputs.remove(connection)
                 try:
                     outputs.remove(connection)
                 except ValueError:

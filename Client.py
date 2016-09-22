@@ -9,6 +9,9 @@ import binascii
 from src import message as message
 from src import Encryption as crypto
 
+
+# TODO: Implement a nicer UI. (qt)
+
 class Client:
     def __init__(self):
         self.sock = socket.socket()
@@ -20,7 +23,7 @@ class Client:
         self.client_key = RSA.generate(4096)
         self.server_key = None
         self.user_keys = {}   # username : publicKey
-        # TODO: Add logs to prepare for seperate channels of communication.
+        # TODO: Add logs to prepare for separate channels of communication.
         self.group_logs = {}  # username : [String]
         self.user_logs = {}   # username : [String]
 
@@ -111,7 +114,7 @@ class Client:
                                 print('Performing Handshake...')
                             else:
                                 user = json_data['tag']
-                                print('Server returned public key for {}.'.format(user))
+                                #print('Server returned public key for {}.'.format(user))
                                 self.user_keys[user] = RSA.importKey(json_data['message'])
                                 for msg in waiting_for_key:
                                     if user == msg['to']:
@@ -124,7 +127,7 @@ class Client:
                         elif json_data['type'] == 'error':
                             print("ERROR: " + json_data['message'])
                         elif json_data['type'] == 'InvalidUserError':  # remove from waiting
-                            print('Server doesn\'t have public key for user, sorry')
+                            print("Server doesn't have public key for user, sorry")
                             for msg in waiting_for_key:
                                 if user == json_data['message']:
                                     waiting_for_key.remove(msg)
@@ -133,6 +136,10 @@ class Client:
                             self.client_name = ''
                         elif json_data['type'] == message.SUCCESS:
                             print(json_data['message'])
+                        elif json_data['type'] == 'shutdown':
+                            print('Server shut down!')
+                            self.sock.close()
+                            sys.exit(0)
 
             while not message_queue.empty():
                 msg = message_queue.get_nowait()
