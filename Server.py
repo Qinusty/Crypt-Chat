@@ -11,7 +11,6 @@ from Crypto.PublicKey import RSA
 
 # General stuff to add:
 # TODO: Implement a group chat system.
-# TODO: Fix user crashing not removing them from users.
 
 
 class Server:

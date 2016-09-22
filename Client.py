@@ -80,7 +80,6 @@ class Client:
                             pswhash = crypto.encrypt_message(pswhash, self.server_key)
                             request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).data
                             message_queue.put(request)
-
                         elif user_input.lower().startswith('/login'):
                             split_user_input = user_input.strip().split(' ')
                             try:
@@ -180,7 +179,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(e)
+        print("ERROR: " + e)
     finally:
         c.stop()
         print("Client Closed!")
