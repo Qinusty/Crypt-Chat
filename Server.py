@@ -1,7 +1,7 @@
 import socket
 import json
 import select
-import sys
+from sys import stdin
 import queue
 from src import message as message
 from src import DbManager as Db
@@ -63,11 +63,11 @@ class Server:
         self.dbmgr.cur.close()
         self.dbmgr.conn.close()
 
-    def listen(self):  # TODO: get the server to notice disconnections.
+    def listen(self):
         # Type : { Connection : Queue }
         self.sock.listen(5)
         message_queue = {}
-        inputs = [self.sock, sys.stdin]
+        inputs = [self.sock, stdin]
         outputs = []
         while self.running:
             try:
@@ -84,9 +84,10 @@ class Server:
                         pubkey = self.public_key()
                         msg = {'type': 'pubkey', 'key': pubkey}
                         conn.send(json.dumps(msg).encode('utf-8'))
-                    elif connection is sys.stdin:
+                    elif connection is stdin:
                         # Handle server admin commands perhaps
                         # TODO: Handle admin input
+                        stdin.readline()
                         print("! ADMIN INPUT NEEDS IMPLEMENTATION !")
                     else:
                         received = connection.recv(4096)

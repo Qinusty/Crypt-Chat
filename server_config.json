@@ -4,5 +4,5 @@
   "db-user": "postgres",
   "db-name": "postgres",
   "db-password": "",
-  "db-host": "127.0.0.1"
+  "db-host": ""
 }
