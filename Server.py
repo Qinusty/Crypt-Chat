@@ -20,7 +20,7 @@ class Server:
         self.HOST = '127.0.0.1'  # default
         self.PORT = 5000  # default
         # default values, overwritten by load_config (specify in server_config.json)
-        self.db_user = 'postgres' ' default'
+        self.db_user = 'postgres'  # default
         self.db_host = '127.0.0.1'
         self.db_password = ''
         self.db_name = 'postgres'
