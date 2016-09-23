@@ -114,7 +114,7 @@ class Client:
                                 print('Performing Handshake...')
                             else:
                                 user = json_data['tag']
-                                #print('Server returned public key for {}.'.format(user))
+                                # print('Server returned public key for {}.'.format(user))
                                 self.user_keys[user] = RSA.importKey(json_data['message'])
                                 for msg in waiting_for_key:
                                     if user == msg['to']:
@@ -157,7 +157,7 @@ class Client:
                 else:
                     data = msg
                 data = data.encode('utf-8')
-                #print(json.dumps(msg))
+                # print(json.dumps(msg))
                 self.sock.send(data)
 
     def stop(self):
