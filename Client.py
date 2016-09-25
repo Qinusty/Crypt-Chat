@@ -196,7 +196,7 @@ class Client:
             group, msg = waiting_for_users[json_data['id']]
             users = json_data['message']
             self.groups[group] = users
-            print('received group list: ', users)
+            # print('received group list: ', users)
             for u in users:
                 if self.client_name != u:
                     msg['to'] = u
