@@ -1,17 +1,18 @@
 import socket
 import json
 import select
-import sys
+from sys import stdin
 import queue
 from src import message as message
 from src import DbManager as Db
 from src import Encryption as crypto
 from Crypto.PublicKey import RSA
+from src import Helper
 
 
 # General stuff to add:
 # TODO: Implement a group chat system.
-# TODO: Fix user crashing not removing them from users.
+
 
 
 class Server:
@@ -21,13 +22,15 @@ class Server:
         self.HOST = '127.0.0.1'  # default
         self.PORT = 5000  # default
         # default values, overwritten by load_config (specify in server_config.json)
-        self.db_user = 'postgres' ' default'
+        self.db_user = 'postgres'  # default
         self.db_host = '127.0.0.1'
         self.db_password = ''
         self.db_name = 'postgres'
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
+
+        self.inputs = [self.sock, stdin]
         self.users = {}  # String : Connection
         self.load_config()
         self.dbmgr = Db.DatabaseManager(self.db_name, self.db_host, self.db_user, self.db_password)
@@ -36,10 +39,12 @@ class Server:
         print("Generating secure key...")
         self.server_key = RSA.generate(4096)
         self.keys = {}  # Connection : publicKey
+        self.groups = {}  # String : [String] // group name : [Usernames]
 
     def load_config(self):
         try:
-            json_data = json.load(open("server_config.json"))
+            f = open("server_config.json")
+            json_data = json.load(f)
             self.HOST = json_data["server-address"]
             self.PORT = json_data["port"]
             self.db_host = json_data["db-host"]
@@ -52,6 +57,9 @@ class Server:
             return False
         except ValueError:
             return False
+        finally:
+            if not f.closed:
+                f.close()
 
     def start(self):
         self.running = True
@@ -62,37 +70,48 @@ class Server:
         self.running = False
         self.dbmgr.cur.close()
         self.dbmgr.conn.close()
+        for i in self.inputs:
+            if i is not stdin:
+                try:
+                    i.send(json.dumps({'type': 'shutdown'}).encode('utf-8'))
+                    i.close()
+                except BrokenPipeError:
+                    pass
+        self.sock.close()
 
-    def listen(self):  # TODO: get the server to notice disconnections.
+    def listen(self):
         # Type : { Connection : Queue }
         self.sock.listen(5)
         message_queue = {}
-        inputs = [self.sock, sys.stdin]
         outputs = []
         while self.running:
             try:
-                inputs_ready, outputs_ready, _ = select.select(inputs, outputs, [])
+                inputs_ready, outputs_ready, _ = select.select(self.inputs, outputs, [])
                 for connection in inputs_ready:
                     if connection is self.sock:  # TODO: break down into more functions
                         # Handle initial client connections
                         conn, addr = connection.accept()
                         print("New connection from ", addr)
                         conn.setblocking(0)
-                        inputs.append(conn)
+                        self.inputs.append(conn)
                         # create a queue
                         message_queue[conn] = queue.Queue()
                         pubkey = self.public_key()
                         msg = {'type': 'pubkey', 'key': pubkey}
                         conn.send(json.dumps(msg).encode('utf-8'))
-                    elif connection is sys.stdin:
+                    elif connection is stdin:
                         # Handle server admin commands perhaps
                         # TODO: Handle admin input
+                        stdin.readline()
                         print("! ADMIN INPUT NEEDS IMPLEMENTATION !")
                     else:
                         received = connection.recv(4096)
                         if len(received) > 0:
                             received = received.decode('utf-8')
-                            self.handle_user_conn(message_queue, connection, received, outputs, inputs)
+                            results = Helper.clean_json(received)
+                            for r in results:
+                                self.handle_user_conn(message_queue, connection, r, outputs)
+
 
                 for connection in outputs_ready:
                     try:
@@ -100,13 +119,13 @@ class Server:
                     except queue.Empty:
                         outputs.remove(connection)
                     else:
-
                         self.send_message(next_msg, connection)
 
             except select.error:
                 print("Select threw an error!")
 
-    def handle_user_conn(self, message_queue, connection, received, outputs, inputs):
+    def handle_user_conn(self, message_queue, connection, received, outputs):
+        print(received)
         json_data = json.loads(received)
         # Handle unique connections via lookup with self.users
 
@@ -161,7 +180,7 @@ class Server:
                                                        "<password>").to_json()
                 queue_message(message_queue, resp, connection, outputs)
         else:  # connected user
-            if json_data['type'] in [message.MESSAGE_TYPE]:
+            if json_data['type'] in [message.MESSAGE_TYPE, "group-message"]:
                 existing_user = False
                 outgoing_conn = None
                 for username, user_conn in self.users.items():
@@ -175,9 +194,19 @@ class Server:
                 else:
                     queue_message(message_queue, json.dumps(json_data), outgoing_conn, outputs)
                 print(json_data['from'], " -> ", json_data['to'],
-                      " : SECURE" if json_data['type'] == message.SECUREMESSAGE_TYPE else "")
+                      " : {}".format(json_data['group']) if json_data['type'] == "group-message" else "")
+            elif json_data['type'] == 'group-message':
+                group = json_data['group']
+                users = self.groups.get(group)
+                if users is None:
+                    self.groups[group] = []
+                if json_data['from'] not in users:
+                    self.groups[group].append(json_data['from'])
+                else:
+                    self.groups[group] = [json_data['from'], ]
             elif json_data['type'] == 'logout':
-                inputs.remove(connection)
+                self.inputs.remove(connection)
+
                 try:
                     outputs.remove(connection)
                 except ValueError:
@@ -199,15 +228,26 @@ class Server:
                                                                       key.exportKey('PEM').decode('utf-8'),
                                                                       tag=user).to_json(),
                                       connection, outputs)
+                elif json_data['request'] == 'group-list':
+                    users = self.groups.get(json_data['group'])
+                    user = json_data['from']
+                    if users is None:
+                        self.groups[json_data['group']] = [user, ]
+                        users = self.groups[json_data['group']]
+                    elif user not in users:
+                        users.append(user)
+                    queue_message(message_queue, message.Response('group-list',
+                                                                  users,
+                                                                  id=json_data['id']).to_json(), connection, outputs)
 
     def send_message(self, msg, connection):
-        # TODO: add RSA
         data = msg.encode('utf-8')
         connection.send(data)
 
     def public_key(self):
         pubkey = self.server_key.publickey()
         return pubkey.exportKey('PEM').decode('utf-8')
+
 
 
 def queue_message(message_queue, msg, connection, outputs):

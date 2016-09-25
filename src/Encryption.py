@@ -2,11 +2,11 @@ from Crypto.Cipher import PKCS1_OAEP
 import binascii
 
 
-def encrypt_communication(msg, key):
+def __encrypt(msg, key):
     return PKCS1_OAEP.new(key).encrypt(msg)
 
 
-def decrypt_communication(cmsg, key):
+def __decrypt(cmsg, key):
     msg = PKCS1_OAEP.new(key).decrypt(cmsg)
     if isinstance(msg, bytes):
         msg = msg.decode('utf-8')
@@ -20,7 +20,9 @@ def encrypt_message(text, key):
     :param key: public key to encrypt with
     :return: ciphertext as hex
     """
-    cipher_text = encrypt_communication(text, key)
+    if not isinstance(text, bytes):
+        text = text.encode('utf-8')
+    cipher_text = __encrypt(text, key)
     return binascii.hexlify(cipher_text).decode('utf-8')
 
 
@@ -32,6 +34,6 @@ def decrypt_message(cipher_text, key):
     :return: plaintext
     """
     cipher_text = binascii.unhexlify(cipher_text)
-    text = decrypt_communication(cipher_text, key)
+    text = __decrypt(cipher_text, key)
 
     return text
