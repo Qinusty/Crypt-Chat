@@ -23,8 +23,9 @@ class Client:
         self.client_key = RSA.generate(4096)
         self.server_key = None
         self.user_keys = {}   # username : publicKey
+        self.groups = {}      # groupname : [String]
         # TODO: Add logs to prepare for separate channels of communication.
-        self.group_logs = {}  # username : [String]
+        self.group_logs = {}  # groupname : [String]
         self.user_logs = {}   # username : [String]
 
     def load_config(self):
@@ -60,7 +61,9 @@ class Client:
         self.run()
 
     def run(self):
+        request_count = 0
         waiting_for_key = []
+        waiting_for_users = {}  # expected response id : (group, message)
         message_queue = queue.Queue()
         inputs = [self.sock, sys.stdin]
         while self.running:
@@ -69,11 +72,15 @@ class Client:
                 if s == sys.stdin:  # TODO: break down into functions
                     user_input = sys.stdin.readline()
                     if user_input.startswith('/'):
-                        if user_input.lower().startswith('/msg'):
-                            split_user_input = user_input.split(' ')
+                        if user_input.lower().startswith('/msg') or user_input.lower().startswith('/gmsg'):
+                            split_user_input = user_input.lower().split(' ')
                             to = split_user_input[1]
                             text = " ".join(split_user_input[2:]).strip('\n')
-                            json_message = message.Message(to, text, self.client_name).data
+                            if split_user_input[0].startswith('/gmsg'):
+                                json_message = {'type': 'group-message', 'group': to,
+                                                'message': text, 'from': self.client_name}
+                            else:
+                                json_message = message.Message(to, text, self.client_name).data
                             message_queue.put(json_message)
                         elif user_input.lower().startswith('/register'):
                             split_user_input = user_input.strip().split(' ')
@@ -81,6 +88,7 @@ class Client:
                             self.client_name = usn
                             pswhash = hash_password(split_user_input[2])
                             pswhash = crypto.encrypt_message(pswhash, self.server_key)
+
                             request = message.Request(message.REGISTER_REQUEST, [usn, pswhash]).data
                             message_queue.put(request)
                         elif user_input.lower().startswith('/login'):
@@ -91,7 +99,9 @@ class Client:
                                 print("Invalid command! /login <username> <password>")
                             passhash = hash_password(psw)
                             passhash = crypto.encrypt_message(passhash, self.server_key)
+                            psw = None
                             rq = message.Request(message.AUTH_REQUEST, [usn, passhash])
+                            passhash = None
                             self.client_name = usn
                             #  print(rq.to_json())
                             message_queue.put(rq.data)
@@ -123,7 +133,17 @@ class Client:
                                         waiting_for_key.remove(msg)  # remove from waiting
                         elif json_data['type'] == 'message':
                             msg = crypto.decrypt_message(json_data['message'], self.client_key)
-                            print('<{}>: {}'.format(json_data['from'], msg))
+                            text = '<{}>: {}'.format(json_data['from'], msg)
+                            self.user_logs[json_data['from']].append(text)
+                            print(text)
+                        elif json_data['type'] == 'group-message':
+                            msg = crypto.decrypt_message(json_data['message'], self.client_key)
+                            text = '<{}>({}): {}'.format(json_data['from'], json_data['group'], msg)
+                            log = self.group_logs.get(json_data['group'])
+                            if log is None:
+                                log = []
+                            log.append(text)
+                            print(text)
                         elif json_data['type'] == 'error':
                             print("ERROR: " + json_data['message'])
                         elif json_data['type'] == 'InvalidUserError':  # remove from waiting
@@ -136,6 +156,16 @@ class Client:
                             self.client_name = ''
                         elif json_data['type'] == message.SUCCESS:
                             print(json_data['message'])
+                        elif json_data['type'] == 'group-list':
+                            group, msg = waiting_for_users[json_data['id']]
+                            users = json_data['message']
+                            self.groups[group] = users
+                            print('received group list: ', users)
+                            for u in users:
+                                if self.client_name != u:
+                                    msg['to'] = u
+                                    message_queue.put(msg)
+                            waiting_for_users[json_data['id']] = None
                         elif json_data['type'] == 'shutdown':
                             print('Server shut down!')
                             self.sock.close()
@@ -143,8 +173,14 @@ class Client:
 
             while not message_queue.empty():
                 msg = message_queue.get_nowait()
-
-                if msg['type'] == 'message':
+                if msg['type'] == 'group-message' and msg.get('to') is None:
+                    group = msg['group']
+                    # request user list
+                    waiting_for_users[request_count] = (group, msg)
+                    msg = {'type': 'request', 'request': 'group-list',
+                                       'group': group, 'id': request_count, 'from': self.client_name}
+                    request_count += 1
+                elif msg['type'] == 'message' or msg['type'] == 'group-message':
                     if msg['to'] not in self.user_keys.keys():
                         waiting_for_key.append(msg)  # put it in the waiting pile
                         # send a request for public key
@@ -181,13 +217,15 @@ def hash_password(pwd):
 
 if __name__ == "__main__":
     c = Client()
-    try:
-        c.start()
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        print("ERROR: " + e)
-    finally:
-        c.stop()
-        print("Client Closed!")
+    c.start()
+    c.stop()
+    # try:
+    #     c.start()
+    # except KeyboardInterrupt:
+    #     pass
+    # except Exception as e:
+    #     print("ERROR: " + e)
+    # finally:
+    #     c.stop()
+    #     print("Client Closed!")
 

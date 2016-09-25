@@ -38,6 +38,7 @@ class Server:
         print("Generating secure key...")
         self.server_key = RSA.generate(4096)
         self.keys = {}  # Connection : publicKey
+        self.groups = {}  # String : [String] // group name : [Usernames]
 
     def load_config(self):
         try:
@@ -114,7 +115,6 @@ class Server:
                     except queue.Empty:
                         outputs.remove(connection)
                     else:
-
                         self.send_message(next_msg, connection)
 
             except select.error:
@@ -175,7 +175,7 @@ class Server:
                                                        "<password>").to_json()
                 queue_message(message_queue, resp, connection, outputs)
         else:  # connected user
-            if json_data['type'] in [message.MESSAGE_TYPE]:
+            if json_data['type'] in [message.MESSAGE_TYPE, "group-message"]:
                 existing_user = False
                 outgoing_conn = None
                 for username, user_conn in self.users.items():
@@ -189,7 +189,16 @@ class Server:
                 else:
                     queue_message(message_queue, json.dumps(json_data), outgoing_conn, outputs)
                 print(json_data['from'], " -> ", json_data['to'],
-                      " : SECURE" if json_data['type'] == message.SECUREMESSAGE_TYPE else "")
+                      " : {}".format(json_data['group']) if json_data['type'] == "group-message" else "")
+            elif json_data['type'] == 'group-message':
+                group = json_data['group']
+                users = self.groups.get(group)
+                if users is None:
+                    self.groups[group] = []
+                if json_data['from'] not in users:
+                    self.groups[group].append(json_data['from'])
+                else:
+                    self.groups[group] = [json_data['from'], ]
             elif json_data['type'] == 'logout':
                 self.inputs.remove(connection)
                 try:
@@ -213,6 +222,17 @@ class Server:
                                                                       key.exportKey('PEM').decode('utf-8'),
                                                                       tag=user).to_json(),
                                       connection, outputs)
+                elif json_data['request'] == 'group-list':
+                    users = self.groups.get(json_data['group'])
+                    user = json_data['from']
+                    if users is None:
+                        self.groups[json_data['group']] = [user, ]
+                        users = self.groups[json_data['group']]
+                    elif user not in users:
+                        users.append(user)
+                    queue_message(message_queue, message.Response('group-list',
+                                                                  users,
+                                                                  id=json_data['id']).to_json(), connection, outputs)
 
     def send_message(self, msg, connection):
         data = msg.encode('utf-8')

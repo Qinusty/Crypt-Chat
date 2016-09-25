@@ -21,9 +21,12 @@ class Base:
 
 
 class Message(Base):
-    def __init__(self, to, message, fr):
+    def __init__(self, to, message, fr, group_flag=False):
         super().__init__()
-        self.data['type'] = MESSAGE_TYPE
+        if not group_flag:
+            self.data['type'] = MESSAGE_TYPE
+        else:
+            self.data['type'] = 'group-message'
         self.data['to'] = to
         self.data['message'] = message
         self.data['from'] = fr
@@ -38,12 +41,14 @@ class Request(Base):
 
 
 class Response(Base):
-    def __init__(self, type, message='', tag=None):
+    def __init__(self, type, message='', tag=None, id=None):
         super().__init__()
         self.data['type'] = type
         self.data['message'] = message
         if tag is not None:
             self.data['tag'] = tag
+        if id is not None:
+            self.data['id'] = id
 
 def parse(json_data):
     # return a message object
