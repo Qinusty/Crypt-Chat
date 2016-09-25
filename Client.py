@@ -134,7 +134,10 @@ class Client:
                         elif json_data['type'] == 'message':
                             msg = crypto.decrypt_message(json_data['message'], self.client_key)
                             text = '<{}>: {}'.format(json_data['from'], msg)
-                            self.user_logs[json_data['from']].append(text)
+                            log = self.user_logs.get(json_data['from'])
+                            if log is None:
+                                self.user_logs[json_data['from']] = log = []
+                            log.append(text)
                             print(text)
                         elif json_data['type'] == 'group-message':
                             msg = crypto.decrypt_message(json_data['message'], self.client_key)

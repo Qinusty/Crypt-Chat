@@ -16,21 +16,18 @@
 ## Setup basics
 **Setup tested on Fedora 23 in Gnome terminal, Python 3.4.3 and virtualenv 15.0.1**
 
-use `python -V` to ensure python is running version 3.4.3 or above.
-if not, consider changing this via the `update-alternatives --config` command
-or check `python3 -V`
 
 ```
 git clone git@github.com:Qinusty/Crypt-Chat.git
 cd Crypt-Chat/
-virtualenv env
+virtualenv -p python3.4 env
 ```
 activate the virtual environment
-- bash uses `source env/bin/activate`
+- bash uses `. env/bin/activate`
 - fish uses `. env/bin/activate.fish`
 
 Double check python version with `python -V`
-If you are still on python 2.7.x, run future python commands with `python3` instead of `python`
+If you are still on python 2.7.x, run future python commands with `python3.4` instead of `python`
 
 ### Client
 Modify config.json and add server details.
