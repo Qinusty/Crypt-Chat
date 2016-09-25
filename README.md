@@ -1,5 +1,13 @@
 # Client/Server encrypted chat application
 
+## Client command guide
+`/register <username> <password>` is used to register an account with the server
+`/login <username> <password>` is used to attempt to authenticate with the server
+
+`/msg <username> <message>` is used to communicate with a user via username (end to end encryption is used)
+`/gmsg <groupname> <message>` is used to communicate with a group via the server, all messages are end to end encrypted however user lists are stored.
+`/exit` closes the client and logs out of the server
+
 ## Requirements
 - Postgresql with database 'enchat'
 - Python 3.4.3 or above
