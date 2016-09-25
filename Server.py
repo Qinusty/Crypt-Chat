@@ -201,6 +201,7 @@ class Server:
                     self.groups[group] = [json_data['from'], ]
             elif json_data['type'] == 'logout':
                 self.inputs.remove(connection)
+
                 try:
                     outputs.remove(connection)
                 except ValueError:

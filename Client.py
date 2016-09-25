@@ -167,7 +167,7 @@ class Client:
                             for u in users:
                                 if self.client_name != u:
                                     msg['to'] = u
-                                    message_queue.put(msg)
+                                    message_queue.put(msg.copy())
                             waiting_for_users[json_data['id']] = None
                         elif json_data['type'] == 'shutdown':
                             print('Server shut down!')
