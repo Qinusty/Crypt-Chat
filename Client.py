@@ -229,8 +229,7 @@ def hash_password(pwd):
 
 if __name__ == "__main__":
     c = Client()
-    c.start()
-    #c.stop()
+    # c.stop()
     try:
         c.start()
     except KeyboardInterrupt:
