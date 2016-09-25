@@ -73,7 +73,7 @@ class Client:
                     user_input = sys.stdin.readline()
                     if user_input.startswith('/'):
                         if user_input.lower().startswith('/msg') or user_input.lower().startswith('/gmsg'):
-                            split_user_input = user_input.lower().split(' ')
+                            split_user_input = user_input.split(' ')
                             to = split_user_input[1]
                             text = " ".join(split_user_input[2:]).strip('\n')
                             if split_user_input[0].startswith('/gmsg'):
