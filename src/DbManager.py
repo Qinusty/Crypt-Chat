@@ -1,5 +1,5 @@
 import psycopg2
-
+import sys
 
 class DatabaseManager:
 
@@ -9,7 +9,11 @@ class DatabaseManager:
         self.conn.autocommit = True
 
     def validate_user(self, usn, passhash):
-        self.cur.execute('SELECT passhash FROM users WHERE name = %s', (usn,))
+        try:
+            self.cur.execute('SELECT passhash FROM users WHERE name = %s', (usn,))
+        except psycopg2.ProgrammingError:
+            print('Invalid database configuraton!')
+            sys.exit(1)
         data = self.cur.fetchone()
         if data is not None and data[0] == passhash:
             return True

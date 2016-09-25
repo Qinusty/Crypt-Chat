@@ -125,7 +125,7 @@ class Server:
                 print("Select threw an error!")
 
     def handle_user_conn(self, message_queue, connection, received, outputs):
-        print(received)
+        # print(received)
         json_data = json.loads(received)
         # Handle unique connections via lookup with self.users
 
