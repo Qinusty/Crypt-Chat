@@ -7,6 +7,7 @@ from src import message as message
 from src import DbManager as Db
 from src import Encryption as crypto
 from Crypto.PublicKey import RSA
+from src import Helper
 
 
 # General stuff to add:
@@ -107,7 +108,10 @@ class Server:
                         received = connection.recv(4096)
                         if len(received) > 0:
                             received = received.decode('utf-8')
-                            self.handle_user_conn(message_queue, connection, received, outputs)
+                            results = Helper.clean_json(received)
+                            for r in results:
+                                self.handle_user_conn(message_queue, connection, r, outputs)
+
 
                 for connection in outputs_ready:
                     try:
@@ -121,6 +125,7 @@ class Server:
                 print("Select threw an error!")
 
     def handle_user_conn(self, message_queue, connection, received, outputs):
+        print(received)
         json_data = json.loads(received)
         # Handle unique connections via lookup with self.users
 
@@ -242,6 +247,7 @@ class Server:
     def public_key(self):
         pubkey = self.server_key.publickey()
         return pubkey.exportKey('PEM').decode('utf-8')
+
 
 
 def queue_message(message_queue, msg, connection, outputs):

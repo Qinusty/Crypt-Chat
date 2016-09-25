@@ -8,6 +8,7 @@ from Crypto.PublicKey import RSA
 import binascii
 from src import message as message
 from src import Encryption as crypto
+from src import Helper
 
 
 # TODO: Implement a nicer UI. (qt)
@@ -112,67 +113,11 @@ class Client:
                 if s == self.sock:
                     received = s.recv(4096).decode('utf-8')
                     if len(received) > 0:
-                        json_data = json.loads(received)
-                        if json_data['type'] == 'pubkey':
-                            if json_data.get('tag') is None:  # Server public key
-                                print('Received Handshake request')
-                                self.server_key = RSA.importKey(json_data['key'])
-                                msg = {'type': 'pubkey', 'key':  self.client_key.publickey()
-                                                                                .exportKey('PEM')
-                                                                                .decode('utf-8')}
-                                s.send(json.dumps(msg).encode('utf-8'))
-                                print('Performing Handshake...')
-                            else:
-                                user = json_data['tag']
-                                # print('Server returned public key for {}.'.format(user))
-                                self.user_keys[user] = RSA.importKey(json_data['message'])
-                                for msg in waiting_for_key:
-                                    if user == msg['to']:
-                                        message_queue.put(msg)  # put back in message queue to be sent
-                                        # print('Resending message: {} \nto {}.'.format(msg['message'], msg['to']))
-                                        waiting_for_key.remove(msg)  # remove from waiting
-                        elif json_data['type'] == 'message':
-                            msg = crypto.decrypt_message(json_data['message'], self.client_key)
-                            text = '<{}>: {}'.format(json_data['from'], msg)
-                            log = self.user_logs.get(json_data['from'])
-                            if log is None:
-                                self.user_logs[json_data['from']] = log = []
-                            log.append(text)
-                            print(text)
-                        elif json_data['type'] == 'group-message':
-                            msg = crypto.decrypt_message(json_data['message'], self.client_key)
-                            text = '<{}>({}): {}'.format(json_data['from'], json_data['group'], msg)
-                            log = self.group_logs.get(json_data['group'])
-                            if log is None:
-                                log = []
-                            log.append(text)
-                            print(text)
-                        elif json_data['type'] == 'error':
-                            print("ERROR: " + json_data['message'])
-                        elif json_data['type'] == 'InvalidUserError':  # remove from waiting
-                            print("Server doesn't have public key for user, sorry")
-                            for msg in waiting_for_key:
-                                if user == json_data['message']:
-                                    waiting_for_key.remove(msg)
-                        elif json_data['type'] == 'auth-error':
-                            print(json_data['message'])
-                            self.client_name = ''
-                        elif json_data['type'] == message.SUCCESS:
-                            print(json_data['message'])
-                        elif json_data['type'] == 'group-list':
-                            group, msg = waiting_for_users[json_data['id']]
-                            users = json_data['message']
-                            self.groups[group] = users
-                            print('received group list: ', users)
-                            for u in users:
-                                if self.client_name != u:
-                                    msg['to'] = u
-                                    message_queue.put(msg.copy())
-                            waiting_for_users[json_data['id']] = None
-                        elif json_data['type'] == 'shutdown':
-                            print('Server shut down!')
-                            self.sock.close()
-                            sys.exit(0)
+                        results = Helper.clean_json(received)
+                        for r in results:  # received multiple json strings in one buffer, clean_json strips them into
+                                           # a list of json strings
+                            self.handle_sock(r, message_queue, waiting_for_key, waiting_for_users)
+
 
             while not message_queue.empty():
                 msg = message_queue.get_nowait()
@@ -199,6 +144,69 @@ class Client:
                 # print(json.dumps(msg))
                 self.sock.send(data)
 
+    def handle_sock(self, received, message_queue, waiting_for_key, waiting_for_users):
+        json_data = json.loads(received)
+        if json_data['type'] == 'pubkey':
+            if json_data.get('tag') is None:  # Server public key
+                print('Received Handshake request')
+                self.server_key = RSA.importKey(json_data['key'])
+                msg = {'type': 'pubkey', 'key': self.client_key.publickey()
+                    .exportKey('PEM')
+                    .decode('utf-8')}
+                self.sock.send(json.dumps(msg).encode('utf-8'))
+                print('Performing Handshake...')
+            else:
+                user = json_data['tag']
+                # print('Server returned public key for {}.'.format(user))
+                self.user_keys[user] = RSA.importKey(json_data['message'])
+                for msg in waiting_for_key:
+                    if user == msg['to']:
+                        message_queue.put(msg)  # put back in message queue to be sent
+                        # print('Resending message: {} \nto {}.'.format(msg['message'], msg['to']))
+                        waiting_for_key.remove(msg)  # remove from waiting
+        elif json_data['type'] == 'message':
+            msg = crypto.decrypt_message(json_data['message'], self.client_key)
+            text = '<{}>: {}'.format(json_data['from'], msg)
+            log = self.user_logs.get(json_data['from'])
+            if log is None:
+                self.user_logs[json_data['from']] = log = []
+            log.append(text)
+            print(text)
+        elif json_data['type'] == 'group-message':
+            msg = crypto.decrypt_message(json_data['message'], self.client_key)
+            text = '<{}>({}): {}'.format(json_data['from'], json_data['group'], msg)
+            log = self.group_logs.get(json_data['group'])
+            if log is None:
+                log = []
+            log.append(text)
+            print(text)
+        elif json_data['type'] == 'error':
+            print("ERROR: " + json_data['message'])
+        elif json_data['type'] == 'InvalidUserError':  # remove from waiting
+            print("Server doesn't have public key for user, sorry")
+            for msg in waiting_for_key:
+                if msg['to'] == json_data['message']:
+                    waiting_for_key.remove(msg)
+        elif json_data['type'] == 'auth-error':
+            print(json_data['message'])
+            self.client_name = ''
+        elif json_data['type'] == message.SUCCESS:
+            print(json_data['message'])
+        elif json_data['type'] == 'group-list':
+            group, msg = waiting_for_users[json_data['id']]
+            users = json_data['message']
+            self.groups[group] = users
+            print('received group list: ', users)
+            for u in users:
+                if self.client_name != u:
+                    msg['to'] = u
+                    message_queue.put(msg.copy())
+            waiting_for_users[json_data['id']] = None
+        elif json_data['type'] == 'shutdown':
+            print('Server shut down!')
+            self.sock.close()
+            sys.exit(0)
+
     def stop(self):
         try:
             data = {'type': 'logout'}
@@ -212,6 +220,7 @@ class Client:
         sys.exit(0)
 
 
+
 def hash_password(pwd):
     pswhash = SHA512.new(pwd.encode('utf-8')).digest()
     pswhash = binascii.hexlify(pswhash)
@@ -221,14 +230,14 @@ def hash_password(pwd):
 if __name__ == "__main__":
     c = Client()
     c.start()
-    c.stop()
-    # try:
-    #     c.start()
-    # except KeyboardInterrupt:
-    #     pass
-    # except Exception as e:
-    #     print("ERROR: " + e)
-    # finally:
-    #     c.stop()
-    #     print("Client Closed!")
+    #c.stop()
+    try:
+        c.start()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print("ERROR: " + e)
+    finally:
+        c.stop()
+        print("Client Closed!")
 
