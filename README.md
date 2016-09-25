@@ -9,7 +9,7 @@
 `/exit` closes the client and logs out of the server
 
 ## Requirements
-- Postgresql with database 'enchat'
+- Postgresql with database <dbname>
 - Python 3.4.3 or above
 - Virtualenv
 
