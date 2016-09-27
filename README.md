@@ -1,4 +1,4 @@
-# Client/Server encrypted chat application
+# Client/Server encrypted chat application ![Travis ci](https://travis-ci.org/Qinusty/Crypt-Chat.svg?branch=master)
 
 ## Client command guide
 `/register <username> <password>` is used to register an account with the server
@@ -9,7 +9,7 @@
 `/exit` closes the client and logs out of the server
 
 ## Requirements
-- Postgresql with database 'enchat'
+- Postgresql with database <dbname>
 - Python 3.4.3 or above
 - Virtualenv
 
