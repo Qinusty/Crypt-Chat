@@ -110,7 +110,8 @@ class Server:
                             received = received.decode('utf-8')
                             results = Helper.clean_json(received)
                             for r in results:
-                                self.handle_user_conn(message_queue, connection, r, outputs)
+                                if len(r) > 0:
+                                    self.handle_user_conn(message_queue, connection, r, outputs)
 
 
                 for connection in outputs_ready:
@@ -126,7 +127,11 @@ class Server:
 
     def handle_user_conn(self, message_queue, connection, received, outputs):
         # print(received)
-        json_data = json.loads(received)
+        try:
+            json_data = json.loads(received)
+        except ValueError:
+            ## Something is wrong with the data, just quit trying to process this.
+            return None
         # Handle unique connections via lookup with self.users
 
         if connection not in self.users.values():
