@@ -1,8 +1,5 @@
 {
   "server-address": "127.0.0.1",
   "port": 5000,
-  "db-user": "postgres",
-  "db-name": "postgres",
-  "db-password": "",
-  "db-host": ""
+  "db-name": "newdb"
 }

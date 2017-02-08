@@ -19,13 +19,7 @@ class Server:
     def __init__(self):
         super().__init__()
         self.running = False
-        self.HOST = '127.0.0.1'  # default
-        self.PORT = 5000  # default
         # default values, overwritten by load_config (specify in server_config.json)
-        self.db_user = 'postgres'  # default
-        self.db_host = '127.0.0.1'
-        self.db_password = ''
-        self.db_name = 'postgres'
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # debug
@@ -33,7 +27,7 @@ class Server:
         self.inputs = [self.sock, stdin]
         self.users = {}  # String : Connection
         self.load_config()
-        self.dbmgr = Db.DatabaseManager(self.db_name, self.db_host, self.db_user, self.db_password)
+        self.dbmgr = Db.DatabaseManager("newdb")
         print('Successfully connected to the Database')
         print('Running server on {}:{}'.format(self.HOST, self.PORT))
         print("Generating secure key...")
@@ -47,9 +41,6 @@ class Server:
             json_data = json.load(f)
             self.HOST = json_data["server-address"]
             self.PORT = json_data["port"]
-            self.db_host = json_data["db-host"]
-            self.db_user = json_data["db-user"]
-            self.db_password = json_data["db-password"]
             self.db_name = json_data["db-name"]
             return True
         except FileNotFoundError:
@@ -68,8 +59,6 @@ class Server:
 
     def stop(self):
         self.running = False
-        self.dbmgr.cur.close()
-        self.dbmgr.conn.close()
         for i in self.inputs:
             if i is not stdin:
                 try:
