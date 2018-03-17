@@ -1,6 +1,6 @@
 # Client/Server encrypted chat application ![Travis ci](https://travis-ci.org/Qinusty/Crypt-Chat.svg?branch=master)
 
-**Example server running at qinusty.co.uk port 5000**
+~~**Example server running at qinusty.co.uk port 5000**~~
 
 ## Client command guide
 `/register <username> <password>` is used to register an account with the server
